@@ -166,7 +166,10 @@ El modelo sigue fotos del Fiat 600 D: faros redondos altos sobre los guardabarro
 posición junto al paragolpes, escudo con bigotes cromados, tira por el medio del capó, ventanillas grandes de
 esquinas redondeadas con marco cromado y ventilete, custodia trasera, tomas de aire, parrilla ancha de lamas
 sobre la tapa del motor, luces traseras redondas en los guardabarros, paragolpes con defensas, ruedas chicas
-con llanta color carrocería, taza cromada y banda blanca. La música del menú es una tarantela napolitana
+con llanta color carrocería, taza cromada y banda blanca. Los faros son lentes de vidrio transparente con
+reflector cromado y lamparita (de noche prende el emisivo). Marco de puerta, tapa del baúl (costura en U con
+tira cromada) y tapa del motor tienen sus costuras. `herramientas/casco.mjs` imprime la superficie exterior del
+casco (perfil + bisel) para apoyar vidrios, emblemas y luces sin que queden hundidos ni flotando. La música del menú es una tarantela napolitana
 propia en 6/8: mandolina en trémolo (`pluck`), acordeón en acordes, bajo "um-pa" y pandereta (`shake`).
 
 ## Sonido del motor
