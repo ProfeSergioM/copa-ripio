@@ -7,10 +7,10 @@ function midiHz(m) { return 440 * Math.pow(2, (m - 69) / 12); }
 // rasp: rasgado del escape; filt: brillo; pitch: régimen aparente; lfo: traqueteo; pops: petardeo al soltar.
 export const ENGINE_PROFILES = {
   muestras:  { name: 'Grabado (muestras)', desc: 'Loops grabados de un 4 cilindros, cruzados por régimen. El más realista.', sample: 1.0, synth: 0.3, rasp: 1.0, filt: 1.0, pitch: 1.0, lfo: 11, pops: 1.0 },
-  fabrica:   { name: 'Fitito de fábrica', desc: 'Sintetizador suave y redondo, escape original. Tranquilo y parejo.', sample: 0, synth: 1.0, rasp: 0.45, filt: 0.85, pitch: 1.0, lfo: 9, pops: 0.4 },
-  escape:    { name: 'Escape libre', desc: 'Caño recto: rasposo, brillante y con petardeo al soltar.', sample: 0, synth: 1.15, rasp: 2.4, filt: 1.5, pitch: 1.0, lfo: 12, pops: 2.2 },
-  preparado: { name: 'Preparado de picadas', desc: 'Motor 1100 con dos carburadores: gira más alto, más nervioso.', sample: 0, synth: 1.1, rasp: 1.3, filt: 1.3, pitch: 1.28, lfo: 15, pops: 1.4 },
-  mixto:     { name: 'Grabado con escape libre', desc: 'Las muestras grabadas más el rasgado del sintetizador encima. Con cuerpo.', sample: 0.85, synth: 0.7, rasp: 2.0, filt: 1.3, pitch: 1.0, lfo: 12, pops: 1.8 },
+  fabrica:   { name: 'Fitito de fábrica', desc: 'Sintetizador suave y redondo, escape original. Tranquilo y parejo.', sample: 0, synth: 0.8, rasp: 0.45, filt: 0.85, pitch: 1.0, lfo: 9, pops: 0.4 },
+  escape:    { name: 'Escape libre', desc: 'Caño recto: rasposo, brillante y con petardeo al soltar.', sample: 0, synth: 0.85, rasp: 2.0, filt: 1.4, pitch: 1.0, lfo: 12, pops: 2.2 },
+  preparado: { name: 'Preparado de picadas', desc: 'Motor 1100 con dos carburadores: gira más alto, más nervioso.', sample: 0, synth: 0.8, rasp: 1.2, filt: 1.25, pitch: 1.28, lfo: 15, pops: 1.4 },
+  mixto:     { name: 'Grabado con escape libre', desc: 'Las muestras grabadas más el rasgado del sintetizador encima. Con cuerpo.', sample: 0.8, synth: 0.5, rasp: 1.8, filt: 1.3, pitch: 1.0, lfo: 12, pops: 1.8 },
 };
 
 export class GameAudio {
@@ -19,9 +19,12 @@ export class GameAudio {
   init() {
     if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
     const ctx = this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-    this.master = ctx.createGain(); this.master.gain.value = this.volume * 1.5;
+    this.master = ctx.createGain(); this.master.gain.value = this.volume * 1.2;
+    // compresor suave y, al final, un limitador duro para que no sature
     this.comp = ctx.createDynamicsCompressor(); this.comp.threshold.value = -20; this.comp.ratio.value = 6; this.comp.knee.value = 12;
-    this.master.connect(this.comp); this.comp.connect(ctx.destination);
+    this.limiter = ctx.createDynamicsCompressor(); this.limiter.threshold.value = -6; this.limiter.knee.value = 0; this.limiter.ratio.value = 20; this.limiter.attack.value = 0.002; this.limiter.release.value = 0.12;
+    const trim = ctx.createGain(); trim.gain.value = 0.85;
+    this.master.connect(this.comp); this.comp.connect(this.limiter); this.limiter.connect(trim); trim.connect(ctx.destination);
     // ruido blanco compartido
     const len = ctx.sampleRate * 2, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
     let b0 = 0; for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; b0 = 0.98 * b0 + 0.02 * w; d[i] = (w * 0.6 + b0 * 3) * 0.5; }
@@ -92,8 +95,8 @@ export class GameAudio {
   engineStart() { if (!this.ctx || !this.startBuf) return; const src = this.ctx.createBufferSource(); src.buffer = this.startBuf; const g = this.ctx.createGain(); g.gain.value = 0.5; src.connect(g); g.connect(this.master); src.start(); }
   crashSample(strength, pan) { if (!this.crashBuf) return; const ctx = this.ctx; const src = ctx.createBufferSource(); src.buffer = this.crashBuf; src.playbackRate.value = 0.8 + Math.random() * 0.5; const g = ctx.createGain(); g.gain.value = clamp(strength / 10, 0.15, 1); const p = ctx.createStereoPanner(); p.pan.value = clamp(pan, -1, 1); src.connect(g); g.connect(p); p.connect(this.master); src.start(); }
 
-  setVolume(v) { this.volume = v; if (this.master) this.master.gain.value = this.muted ? 0 : v * 1.5; }
-  toggleMute() { this.muted = !this.muted; if (this.master) this.master.gain.value = this.muted ? 0 : this.volume * 1.5; return this.muted; }
+  setVolume(v) { this.volume = v; if (this.master) this.master.gain.value = this.muted ? 0 : v * 1.2; }
+  toggleMute() { this.muted = !this.muted; if (this.master) this.master.gain.value = this.muted ? 0 : this.volume * 1.2; return this.muted; }
 
   makeEngineVoice(rich) {
     const ctx = this.ctx;
