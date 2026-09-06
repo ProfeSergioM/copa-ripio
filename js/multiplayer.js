@@ -64,10 +64,11 @@ export class Multiplayer {
   buildRoster(players, seed) {
     const rnd = mulberry32(seed);
     const used = new Set();
+    const localId = this.net.role === 'host' ? 'host' : this.net.myId; // quién soy yo en esta máquina
     const roster = players.map((p, i) => {
       const spec = p.spec || {};
       let num = spec.number || 7; while (used.has(num)) num = 1 + Math.floor(rnd() * 99); used.add(num);
-      return { name: p.name || `Jugador ${i + 1}`, isPlayer: p.local, isHuman: true, netId: p.id, color: spec.color || LIVERY_COLORS[i], roofColor: spec.roofColor || spec.color, number: num, accessory: spec.accessory || 'none', stripes: !!spec.stripes, helmetColor: '#e2a33b', skill: 1, aggression: 0.5, seed: 1 + i };
+      return { name: p.name || `Jugador ${i + 1}`, isPlayer: p.id === localId, isHuman: true, netId: p.id, color: spec.color || LIVERY_COLORS[i], roofColor: spec.roofColor || spec.color, number: num, accessory: spec.accessory || 'none', stripes: !!spec.stripes, helmetColor: '#e2a33b', skill: 1, aggression: 0.5, seed: 1 + i };
     });
     const accessories = ['none', 'none', 'none', 'rack', 'lights', 'spoiler', 'antenna'];
     const helmets = ['#d94a3a', '#3f6fb5', '#f0c541', '#f5f1e8', '#2b1d14', '#6f8f4b'];

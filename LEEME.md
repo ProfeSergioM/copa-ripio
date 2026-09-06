@@ -130,6 +130,28 @@ Siete fechas con premios en plata y puntos 25-20-17… para los 20:
 - **Repetición** (`js/replay.js`): poses de los 20 autos a 20 Hz y lista de golpes;
   reproducción interpolada con la cámara de TV (`js/camera.js`).
 
+## Multijugador
+
+Desde el menú, **Multijugador**: uno crea la sala y recibe un código de 4 letras; los demás
+entran con el código (hasta 8 personas; los lugares que sobran los corren rivales de IA).
+El anfitrión elige la fecha y larga. Cada uno corre con su auto de "Pintura y número".
+
+Funciona entre navegadores por **WebRTC con PeerJS** (`js/net.js`): el servidor público
+de PeerJS solo presenta a los jugadores, después los datos viajan directo entre ellos, así
+que sirve desde GitHub Pages sin servidor propio. Protocolo (`js/multiplayer.js`):
+
+- El anfitrión simula los rivales de IA y su auto; cada invitado simula solo el suyo.
+- Estados a 20 Hz (posición, rumbo, velocidad, vuelta, progreso): los invitados le mandan el
+  suyo al anfitrión y el anfitrión reparte el de todos. Los autos remotos se interpolan y
+  extrapolan; son cuerpos "cinemáticos": te frenan al chocarlos pero no se mueven.
+- Los resultados los decide el anfitrión (espera hasta 30 s a los humanos) y los reparte.
+
+## Publicar en GitHub Pages
+
+El sitio es estático: basta con subir la carpeta. `lib/` trae `three` y PeerJS empaquetados
+(no hace falta `node_modules` en producción). El repo `ProfeSergioM/copa-ripio` publica
+`main` en <https://profesergiom.github.io/copa-ripio/>.
+
 ## Assets de terceros
 
 En `assets/` (ver `assets/CREDITOS.md`): banco de 6 grabaciones de motor por régimen,
