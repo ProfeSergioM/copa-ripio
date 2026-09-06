@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Copa Ripio · Campeonato Fiat 600</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Bangers&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script src="lib/peerjs.min.js"></script>
+<script type="importmap">
+{ "imports": {
+  "three": "./lib/three/three.module.js",
+  "three/addons/": "./lib/three/addons/"
+} }
+</script>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="vignette"></div>
+
+<!-- Carga -->
+<div id="loading" class="screen">
+  <div class="panel center">
+    <h1 class="title">COPA RIPIO</h1>
+    <p>Preparando la pista y calentando motores…</p>
+    <div class="bar"><div id="loadbar"></div></div>
+  </div>
+</div>
+
+<!-- Menú principal -->
+<div id="menu" class="screen hidden">
+  <div class="menu-left">
+    <div class="logo">
+      <div class="logo-top">CAMPEONATO FIAT 600</div>
+      <h1 class="title big">COPA RIPIO</h1>
+      <div class="logo-sub">Polvo, abolladuras y 20 fititos a fondo</div>
+    </div>
+    <nav class="menu-buttons">
+      <button id="btn-continue" class="btn primary">Continuar campeonato</button>
+      <button id="btn-new" class="btn">Nuevo campeonato</button>
+      <button id="btn-quick" class="btn">Carrera rápida</button>
+      <button id="btn-mp" class="btn">Multijugador</button>
+      <button id="btn-records" class="btn">Récords</button>
+      <button id="btn-garage" class="btn">Pintura y número</button>
+      <button id="btn-settings" class="btn">Ajustes</button>
+      <button id="btn-help" class="btn ghost">Cómo se juega</button>
+    </nav>
+    <div class="credits">Todo procedural: autos, pistas, clima, sonido. Sin descargas.</div>
+  </div>
+</div>
+
+<!-- Pintura -->
+<div id="garage" class="screen hidden">
+  <div class="panel garage-panel">
+    <h2>Pintura y número</h2>
+    <label>Nombre del piloto <input id="in-name" maxlength="18" value="Vos"></label>
+    <label>Número <input id="in-number" type="number" min="1" max="99" value="7"></label>
+    <div class="row"><span>Color</span><div id="color-swatches" class="swatches"></div></div>
+    <div class="row"><span>Techo</span><div id="roof-swatches" class="swatches"></div></div>
+    <div class="row"><span>Accesorio</span>
+      <select id="in-accessory">
+        <option value="none">Ninguno</option>
+        <option value="rack">Portaequipajes con valijas</option>
+        <option value="lights">Faros auxiliares de rally</option>
+        <option value="spoiler">Alerón casero</option>
+        <option value="antenna">Antena con banderín</option>
+      </select>
+    </div>
+    <div class="row"><span>Franjas</span><input id="in-stripes" type="checkbox" checked></div>
+    <div class="buttons"><button id="btn-garage-back" class="btn primary">Listo</button></div>
+  </div>
+</div>
+
+<!-- Taller: plata, reparaciones y mejoras -->
+<div id="workshop" class="screen hidden">
+  <div class="panel workshop-panel">
+    <h2>Taller de Cacho</h2>
+    <div class="ws-top">
+      <div class="ws-car">
+        <svg viewBox="0 0 60 100" width="90" height="150">
+          <rect id="ws-front" x="12" y="4" width="36" height="22" rx="8"/>
+          <rect id="ws-left" x="4" y="26" width="12" height="48" rx="4"/>
+          <rect id="ws-right" x="44" y="26" width="12" height="48" rx="4"/>
+          <rect id="ws-rear" x="12" y="74" width="36" height="22" rx="8"/>
+          <rect x="18" y="30" width="24" height="40" rx="6" fill="#2b1d14" opacity=".35"/>
+        </svg>
+        <div id="ws-damage" class="dmg-label">Daño 0 %</div>
+      </div>
+      <div class="ws-info">
+        <div class="ws-money">Plata: <b id="ws-money">$0</b></div>
+        <button id="btn-repair" class="btn primary">Reparar todo</button>
+        <p id="ws-note" class="ws-note"></p>
+      </div>
+    </div>
+    <h3>Mejoras</h3>
+    <div id="upgrades" class="upgrades"></div>
+    <div class="buttons"><button id="btn-workshop-back" class="btn primary">Volver al campeonato</button></div>
+  </div>
+</div>
+
+<!-- Ajustes -->
+<div id="settings" class="screen hidden">
+  <div class="panel">
+    <h2>Ajustes</h2>
+    <label>Dificultad de los rivales
+      <select id="in-difficulty"><option value="0.9">Tranqui</option><option value="1" selected>Normal</option><option value="1.07">Picante</option><option value="1.14">Infernal</option></select>
+    </label>
+    <label>Volumen general <input id="in-volume" type="range" min="0" max="1" step="0.05" value="0.8"></label>
+    <label>Música del menú <input id="in-music" type="checkbox" checked></label>
+    <label>Sombras <input id="in-shadows" type="checkbox" checked></label>
+    <label>Vueltas por carrera <select id="in-laps"><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label>
+    <div class="buttons"><button id="btn-settings-back" class="btn primary">Volver</button></div>
+  </div>
+</div>
+
+<!-- Ayuda -->
+<div id="help" class="screen hidden">
+  <div class="panel">
+    <h2>Cómo se juega</h2>
+    <ul class="help-list">
+      <li><b>Flechas / WASD</b> acelerar, frenar, doblar. Freno sostenido con el auto parado: marcha atrás.</li>
+      <li><b>Espacio</b> freno de mano (para cruzar el auto en las horquillas).</li>
+      <li><b>C</b> cámara (cerca, lejos, capó, TV) · <b>V</b> mirar atrás · <b>P</b> modo foto · <b>R</b> volver a la pista · <b>H</b> bocina · <b>M</b> silencio · <b>Esc</b> pausa.</li>
+      <li>También anda con <b>joystick</b> (gatillos y palanca izquierda).</li>
+      <li>El <b>ripio</b> resbala: entrá suave, salí con el auto cruzado. Con lluvia resbala el doble. El pasto y las zanjas frenan mucho.</li>
+      <li>Los <b>golpes se ven y se sienten</b>. El daño queda de una fecha a otra si no lo reparás en el <b>Taller</b>, donde también comprás mejoras con los premios.</li>
+      <li>Cada fecha tenés un <b>rival</b> (★): ganarle da 5 puntos y $500 extra. Se pica.</li>
+      <li>Ir pegado detrás de otro da <b>rebufo</b>. Los saltos del lomo te dejan sin control en el aire.</li>
+      <li><small>Sonidos y texturas de terceros: motor, choque, viento y arranque (OpenGameArt, CC0), grava y pasto (Poly Haven, CC0). Chirrido de neumáticos: "Car tire squeal skid loop" de Bart Kelsey, OpenGameArt, CC-BY 3.0.</small></li>
+    </ul>
+    <div class="buttons"><button id="btn-help-back" class="btn primary">Entendido</button></div>
+  </div>
+</div>
+
+<!-- Campeonato -->
+<div id="champ" class="screen hidden">
+  <div class="panel champ-panel">
+    <h2>Campeonato · <span id="champ-round-title"></span></h2>
+    <div id="champ-money" class="champ-money"></div>
+    <div class="champ-cols">
+      <div class="champ-standings">
+        <h3>Posiciones</h3>
+        <div id="standings" class="table-wrap"></div>
+      </div>
+      <div class="champ-next">
+        <h3>Próxima fecha</h3>
+        <div id="next-round" class="next-round"></div>
+        <div class="buttons"><button id="btn-race" class="btn primary big">¡A correr!</button><button id="btn-workshop" class="btn">Taller</button><button id="btn-champ-back" class="btn ghost">Menú</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- HUD carrera -->
+<div id="hud" class="hidden">
+  <div id="hud-top">
+    <div class="hud-box pos"><span id="hud-pos">P1</span><small id="hud-total-wrap">/<span id="hud-total">20</span></small></div>
+    <div id="hud-lapbox" class="hud-box lap">Vuelta <span id="hud-lap">1</span>/<span id="hud-laps">3</span></div>
+    <div class="hud-box time"><div>Vuelta <span id="hud-laptime">0:00.000</span></div><div class="small">Mejor <span id="hud-best">--:--.---</span> · Récord <span id="hud-record">--:--.---</span></div></div>
+  </div>
+  <div id="hud-split" class="hud-box split hidden"></div>
+  <div id="hud-left">
+    <div id="hud-order" class="hud-box order"></div>
+    <div id="hud-rival" class="hud-box rival hidden"></div>
+  </div>
+  <div id="hud-right">
+    <canvas id="minimap" width="220" height="220"></canvas>
+  </div>
+  <div id="hud-stage" class="hud-box stage hidden"><span id="hud-sector">Salida</span><div class="stagebar"><div id="hud-stagebar"></div></div></div>
+  <div id="hud-bottom">
+    <div id="damage" class="hud-box damage">
+      <svg viewBox="0 0 60 100" width="52" height="86">
+        <rect id="dmg-front" x="12" y="4" width="36" height="22" rx="8"/>
+        <rect id="dmg-left" x="4" y="26" width="12" height="48" rx="4"/>
+        <rect id="dmg-right" x="44" y="26" width="12" height="48" rx="4"/>
+        <rect id="dmg-rear" x="12" y="74" width="36" height="22" rx="8"/>
+        <rect x="18" y="30" width="24" height="40" rx="6" fill="#2b1d14" opacity=".35"/>
+      </svg>
+      <div class="dmg-label">DAÑOS</div>
+    </div>
+    <canvas id="speedo" width="260" height="170"></canvas>
+    <div id="hud-gear" class="hud-box gear">N</div>
+  </div>
+  <div id="arrow-l" class="arrow hidden">◀</div><div id="arrow-r" class="arrow hidden">▶</div>
+  <div id="toasts"></div>
+  <div id="taunt" class="taunt hidden"></div>
+  <div id="countdown" class="hidden"></div>
+  <div id="banner" class="hidden"></div>
+  <div id="slipstream" class="hidden">REBUFO</div>
+  <div id="wrongway" class="hidden">¡CONTRAMANO!</div>
+</div>
+
+<!-- Repetición y modo foto -->
+<div id="replay-overlay" class="overlay hidden"><div class="ov-tag">● REPETICIÓN</div><div class="ov-text"></div><div class="ov-hint">Esc para saltar</div></div>
+<div id="photo-overlay" class="overlay hidden"><div class="ov-tag">📷 MODO FOTO</div><div class="ov-text"></div><div class="ov-hint">Arrastrá con el mouse para girar · rueda para acercar · Enter guarda la foto · P o Esc para volver</div></div>
+
+<!-- Multijugador -->
+<div id="mp" class="screen hidden">
+  <div class="panel mp-panel">
+    <h2>Multijugador</h2>
+    <p id="mp-status" class="mp-status"></p>
+    <div id="mp-setup">
+      <div class="buttons"><button id="btn-mp-create" class="btn primary big">Crear sala</button></div>
+      <label>Código de la sala <input id="mp-code" maxlength="4" placeholder="ABCD" style="width:110px;text-transform:uppercase;font-size:22px;letter-spacing:4px"></label>
+      <div class="buttons"><button id="btn-mp-join" class="btn">Unirse</button></div>
+      <p class="mp-note">Hasta 8 personas; los lugares que sobren los corren rivales de IA. Cada uno usa su auto de "Pintura y número". Funciona entre navegadores por WebRTC: cualquiera crea la sala, los demás entran con el código de 4 letras.</p>
+    </div>
+    <div id="mp-room" class="hidden">
+      <div class="mp-codebox">Sala <b id="mp-codebig"></b></div>
+      <h3>Pilotos</h3>
+      <div id="mp-players" class="mp-players"></div>
+      <label>Fecha <select id="mp-round"></select></label>
+      <p id="mp-hostnote" class="mp-note hidden">El anfitrión elige la fecha y larga.</p>
+      <div class="buttons"><button id="btn-mp-start" class="btn primary big">¡Largar!</button></div>
+    </div>
+    <div class="buttons"><button id="btn-mp-back" class="btn ghost">Volver (salir de la sala)</button></div>
+  </div>
+</div>
+
+<!-- Récords -->
+<div id="records" class="screen hidden">
+  <div class="panel results-panel">
+    <h2>Tus récords</h2>
+    <div id="records-table" class="table-wrap"></div>
+    <div class="buttons"><button id="btn-records-back" class="btn primary">Volver</button></div>
+  </div>
+</div>
+
+<!-- Controles táctiles -->
+<div id="touch" class="hidden">
+  <div class="tc-left"><div class="tc-btn" data-k="left">◀</div><div class="tc-btn" data-k="right">▶</div></div>
+  <div class="tc-right"><div class="tc-btn tc-hb" data-k="hb">✋</div><div class="tc-btn tc-brake" data-k="brake">▼</div><div class="tc-btn tc-gas" data-k="gas">▲</div></div>
+</div>
+
+<!-- Pausa -->
+<div id="pause" class="screen hidden">
+  <div class="panel center">
+    <h2>Pausa</h2>
+    <div class="buttons col"><button id="btn-resume" class="btn primary">Seguir</button><button id="btn-restart" class="btn">Reiniciar carrera</button><button id="btn-quit" class="btn ghost">Abandonar</button></div>
+  </div>
+</div>
+
+<!-- Resultados -->
+<div id="results" class="screen hidden">
+  <div class="panel results-panel">
+    <h2 id="results-title">Resultado</h2>
+    <div id="results-summary" class="results-summary"></div>
+    <div id="results-table" class="table-wrap"></div>
+    <div class="buttons"><button id="btn-replay" class="btn">Ver repetición</button><button id="btn-results-ok" class="btn primary big">Ver campeonato</button></div>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
