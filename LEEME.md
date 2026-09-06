@@ -160,6 +160,20 @@ Fuera del ripio van despacio (9 m/s en la zanja) para poder salir, y un auto per
 5–6 s vuelve al borde de la pista. Se calibra con `herramientas/solo2.mjs` (un auto) y `herramientas/fuera.mjs`
 (20 autos: segundos fuera de pista por vuelta y por sector; `DIF=1.14 CIRCUITO=ovalo REVERSE=1 DIAG=1`).
 
+## Casco generado con ComfyUI (opcional)
+
+El juego puede usar una malla externa como casco: si existe `assets/modelos/fitito.json` la carga al iniciar
+(`loadBodyModel` en `js/car.js`) y no dibuja los guardabarros esféricos; si no existe, usa el perfil extruido.
+Flujo con Comfy Desktop e Hunyuan3D 2 (imagen → 3D, malla sin textura, que se pinta con el toon del juego):
+
+1. Comfy Desktop instalado y abierto (API en `http://127.0.0.1:8188`), con el modelo
+   `models/checkpoints/hunyuan3d-dit-v2.safetensors` (de `tencent/Hunyuan3D-2`, carpeta `hunyuan3d-dit-v2-0`,
+   archivo `model.fp16.safetensors`, ~5 GB; necesita unos 6 GB de VRAM).
+2. Una foto de referencia con fondo liso en `assets/referencias/`.
+3. `node herramientas/comfy_fitito.mjs assets/referencias/foto.jpg` → deja `assets/modelos/fitito_raw.glb`.
+4. `node herramientas/importar_casco.mjs assets/modelos/fitito_raw.glb [--giro 180] [--espejo]` → centra, escala a
+   3,2 m, apoya en el piso, saca las ruedas (el juego pone las suyas) y guarda `assets/modelos/fitito.json`.
+
 ## El Fitito y la música
 
 El modelo sigue fotos del Fiat 600 D: faros redondos altos sobre los guardabarros con aro cromado, luces de

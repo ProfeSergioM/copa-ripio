@@ -21,7 +21,7 @@ export class GameAudio {
     const ctx = this.ctx = new (window.AudioContext || window.webkitAudioContext)();
     this.master = ctx.createGain(); this.master.gain.value = this.volume * 1.2;
     // compresor suave y, al final, un limitador duro para que no sature
-    this.comp = ctx.createDynamicsCompressor(); this.comp.threshold.value = -20; this.comp.ratio.value = 6; this.comp.knee.value = 12;
+    this.comp = ctx.createDynamicsCompressor(); this.comp.threshold.value = -14; this.comp.ratio.value = 3; this.comp.knee.value = 18; this.comp.attack.value = 0.01; this.comp.release.value = 0.25;
     this.limiter = ctx.createDynamicsCompressor(); this.limiter.threshold.value = -6; this.limiter.knee.value = 0; this.limiter.ratio.value = 20; this.limiter.attack.value = 0.002; this.limiter.release.value = 0.12;
     const trim = ctx.createGain(); trim.gain.value = 0.85;
     this.master.connect(this.comp); this.comp.connect(this.limiter); this.limiter.connect(trim); trim.connect(ctx.destination);
@@ -103,16 +103,18 @@ export class GameAudio {
     const out = ctx.createGain(); out.gain.value = 0;
     const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 800; filter.Q.value = 1.2;
     const shaper = ctx.createWaveShaper();
-    const curve = new Float32Array(256); for (let i = 0; i < 256; i++) { const x = i / 128 - 1; curve[i] = Math.tanh(x * 2.2); } shaper.curve = curve;
+    // conformador suave: antes clavaba tanh(2.2x) con ~1,6 de entrada y sonaba saturado
+    const curve = new Float32Array(256); for (let i = 0; i < 256; i++) { const x = i / 128 - 1; curve[i] = Math.tanh(x * 1.25) / Math.tanh(1.25); } shaper.curve = curve;
+    const pre = ctx.createGain(); pre.gain.value = 0.55; pre.connect(shaper);
     shaper.connect(filter); filter.connect(out);
     const oscs = [];
-    const mk = (type, mult, gain) => { const o = ctx.createOscillator(); o.type = type; const g = ctx.createGain(); g.gain.value = gain; o.connect(g); g.connect(shaper); o.start(); oscs.push({ o, mult, g }); };
+    const mk = (type, mult, gain) => { const o = ctx.createOscillator(); o.type = type; const g = ctx.createGain(); g.gain.value = gain; o.connect(g); g.connect(pre); o.start(); oscs.push({ o, mult, g }); };
     mk('sawtooth', 1, 0.5); mk('square', 0.5, 0.35);
     if (rich) { mk('triangle', 2, 0.25); mk('sawtooth', 1.5, 0.12); mk('sine', 4.5, 0.045); /* silbido de la caja */ mk('sawtooth', 0.25, 0.22); /* subgrave */ }
     // rasgado de escape: ruido filtrado que sigue al régimen
     const rasp = ctx.createBufferSource(); rasp.buffer = this.noiseBuf; rasp.loop = true;
     const raspF = ctx.createBiquadFilter(); raspF.type = 'bandpass'; raspF.Q.value = 2.5; raspF.frequency.value = 400;
-    const raspG = ctx.createGain(); raspG.gain.value = 0.18; rasp.connect(raspF); raspF.connect(raspG); raspG.connect(shaper); rasp.start();
+    const raspG = ctx.createGain(); raspG.gain.value = 0.18; rasp.connect(raspF); raspF.connect(raspG); raspG.connect(pre); rasp.start();
     // vibrato de "traqueteo"
     const lfo = ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 11; const lg = ctx.createGain(); lg.gain.value = 1.5; lfo.connect(lg);
     for (const { o } of oscs) lg.connect(o.frequency);
@@ -140,7 +142,7 @@ export class GameAudio {
     const rn = clamp((rpm - 900) / 5500, 0, 1);
     v.filter.frequency.setTargetAtTime((280 + load * 1400 + rn * 2200) * P.filt, t, 0.05);
     v.lg.gain.setTargetAtTime(1 + rn * 3, t, 0.1);
-    const g = gain * (0.35 + 0.65 * load) * (0.6 + 0.4 * rn) * (misfire ? 0.15 : 1);
+    const g = gain * 1.5 * (0.35 + 0.65 * load) * (0.6 + 0.4 * rn) * (misfire ? 0.15 : 1);
     v.out.gain.setTargetAtTime(g, t, misfire ? 0.01 : 0.04);
   }
 

@@ -11,6 +11,7 @@ import { ChaseCamera } from './camera.js';
 import { Championship, ROUNDS, POINTS, makeRoster } from './championship.js';
 import { computeStageTimes } from './stage.js';
 import { LIVERY_COLORS, KEYS } from './config.js';
+import { loadBodyModel } from './car.js';
 import { clamp, lerp } from './util.js';
 import { STRIDE } from './replay.js';
 import { Multiplayer } from './multiplayer.js';
@@ -77,6 +78,8 @@ async function init() {
   app.mp = new Multiplayer(app); app.mp.onLobby = renderLobby; app.mp.onStart = startMultiplayerRace; app.mp.onResults = onMpResults; app.mp.onHostGone = () => { app.ui.toast('El anfitrión se desconectó', 'bad', 4000); };
   app.champ = Championship.load();
   const round = app.champ ? app.champ.current : ROUNDS[0];
+  ui.setLoading(0.03, 'Buscando el casco del Fitito');
+  await loadBodyModel('assets/modelos/fitito.json'); // si no existe, queda el perfil procedural
   ui.setLoading(0.05, 'Trazando la pista');
   await new Promise(r => setTimeout(r, 20));
   await prepareWorld(round, (f, txt) => ui.setLoading(0.1 + f * 0.85, txt));

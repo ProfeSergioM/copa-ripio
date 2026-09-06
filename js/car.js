@@ -77,6 +77,18 @@ function bodyShape() {
 }
 
 let bodyGeoTemplate = null;
+export let customBody = false;
+// Casco importado (assets/modelos/fitito.json, generado con herramientas/importar_casco.mjs): reemplaza al perfil extruido.
+export async function loadBodyModel(url) {
+  try {
+    const r = await fetch(url, { cache: 'no-cache' }); if (!r.ok) return false;
+    const d = await r.json(); const k = d.escala || 0.001;
+    const pos = new Float32Array(d.pos.length); for (let i = 0; i < d.pos.length; i++) pos[i] = d.pos[i] * k;
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setIndex(d.idx);
+    g.computeVertexNormals();
+    bodyGeoTemplate = g; customBody = true; return true;
+  } catch (e) { return false; }
+}
 function bodyGeometry() {
   if (!bodyGeoTemplate) {
     const g = new THREE.ExtrudeGeometry(bodyShape(), { depth: 1.16, bevelEnabled: true, bevelThickness: 0.16, bevelSize: 0.13, bevelSegments: 5, curveSegments: 6 });
@@ -238,7 +250,7 @@ export function createCarVisual(spec) {
 
   // guardabarros abultados alrededor de las ruedas (color carrocería)
   const fenderMat = dirtify(toonMat(spec.color), dirt);
-  for (const [fx, fz] of [[0.7, 1.0], [-0.7, 1.0], [0.7, -1.0], [-0.7, -1.0]]) {
+  for (const [fx, fz] of customBody ? [] : [[0.7, 1.0], [-0.7, 1.0], [0.7, -1.0], [-0.7, -1.0]]) {
     const f = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), fenderMat); if (fz > 0) f.scale.set(0.05, 0.24, 0.44); else f.scale.set(0.1, 0.28, 0.48); f.position.set(fx, 0.6, fz); f.castShadow = true; vis.add(f); // adelante casi plano, atrás un bulto discreto
     const fo = new THREE.Mesh(f.geometry, outline); fo.position.copy(f.position); fo.scale.copy(f.scale); vis.add(fo);
   }
