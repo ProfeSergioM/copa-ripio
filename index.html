@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Copa Ripio · Campeonato Fiat 600</title>
+<title>Formula 600 · Campeonato Fiat 600 en ripio</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Bangers&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
@@ -22,7 +22,7 @@
 <!-- Carga -->
 <div id="loading" class="screen">
   <div class="panel center">
-    <h1 class="title">COPA RIPIO</h1>
+    <h1 class="title">FORMULA 600</h1>
     <p>Preparando la pista y calentando motores…</p>
     <div class="bar"><div id="loadbar"></div></div>
   </div>
@@ -33,7 +33,7 @@
   <div class="menu-left">
     <div class="logo">
       <div class="logo-top">CAMPEONATO FIAT 600</div>
-      <h1 class="title big">COPA RIPIO</h1>
+      <h1 class="title big">FORMULA 600</h1>
       <div class="logo-sub">Polvo, abolladuras y 20 fititos a fondo</div>
     </div>
     <nav class="menu-buttons">
@@ -110,6 +110,8 @@
     <label>Música del menú <input id="in-music" type="checkbox" checked></label>
     <label>Sombras <input id="in-shadows" type="checkbox" checked></label>
     <label>Vueltas por carrera <select id="in-laps"><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label>
+    <label>Sonido del motor <span class="inline"><select id="in-engine"></select><button id="btn-engine-test" class="btn mini" type="button">Probar</button></span></label>
+    <p id="engine-desc" class="mp-note"></p>
     <div class="buttons"><button id="btn-settings-back" class="btn primary">Volver</button></div>
   </div>
 </div>

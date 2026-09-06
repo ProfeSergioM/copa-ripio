@@ -47,6 +47,7 @@ export class World {
       ['Cámaras', () => this.buildTvSpots()],
       ['Arboleda', () => this.buildTrees()],
       ['Detalles', () => { this.buildMarshals(); this.buildLamps(); this.buildBirds(); this.buildGantry(); }],
+      ['Ambiente', () => { this.buildCountryside(); this.buildAtmosphere(); }],
     ];
     for (let i = 0; i < steps.length; i++) {
       progress && progress(i / steps.length, steps[i][0]);
@@ -107,7 +108,7 @@ export class World {
   }
 
   setTimeOfDay(name) {
-    const p = TOD[name] || TOD.morning; this.tod = p;
+    const p = TOD[name] || TOD.morning; this.tod = p; this.todName = name;
     this.sun.position.set(p.sun[0] * 120, p.sun[1] * 120, p.sun[2] * 120); this.sun.color.set(p.sunCol); this.sun.intensity = p.sunI;
     this.hemi.color.set(p.hemiSky); this.hemi.groundColor.set(p.hemiGround); this.hemi.intensity = p.hemiI;
     this.skyMat.uniforms.top.value.set(p.top); this.skyMat.uniforms.horizon.value.set(p.horizon);
@@ -560,6 +561,7 @@ export class World {
 
   update(dt, focusX, focusZ, particles, camY = 0) {
     this.time += dt;
+    this.updateAtmosphere(dt, focusX, focusZ, particles, camY);
     for (const f of this.animated) f(dt, this.time);
     for (const c of this.clouds.children) { c.position.x += (c.userData.speed + this.wind.x * 0.5) * dt; c.position.z += this.wind.z * 0.5 * dt; if (c.position.x > 800) c.position.x = -800; if (c.position.z > 800) c.position.z = -800; }
     this.sunTarget.position.set(focusX, 0, focusZ);
@@ -570,6 +572,118 @@ export class World {
   }
 }
 const M4 = new THREE.Matrix4();
+
+// Bruma baja según la hora (0 = nada)
+const MIST = { morning: 0.5, fog: 0.85, dusk: 0.4, storm: 0.35, sunset: 0.3, noon: 0.08 };
+
+World.prototype.buildCountryside = function () {
+  // Rollos de pasto, camionetas de los hinchas detrás de la tribuna y una parrilla con su humo.
+  const t = this.track, rnd = mulberry32(23), sc = t.def.scenery, W = t.W;
+  const rollGeo = new THREE.CylinderGeometry(0.85, 0.85, 1.5, 12); rollGeo.rotateZ(Math.PI / 2);
+  const rolls = [];
+  for (let k = 0; k < 400 && rolls.length < 14; k++) {
+    const s = t.samples[Math.floor(rnd() * t.n)], side = rnd() < 0.5 ? -1 : 1, lat = side * (W + 17 + rnd() * 30);
+    const x = s.x + s.nx * lat, z = s.z + s.nz * lat;
+    if (t.nearest(x, z).dist < W + 15 || this.reservedHit(x, z)) continue;
+    rolls.push({ x, z, rot: rnd() * 6 });
+    t.addBarrier({ x, z, r: 1.0, type: 'roll' });
+  }
+  if (rolls.length) {
+    const rm = new THREE.InstancedMesh(rollGeo, toonMat('#d9c27a'), rolls.length); rm.castShadow = rm.receiveShadow = true;
+    rolls.forEach((r, i) => { M4.makeRotationY(r.rot).setPosition(r.x, t.heightAt(r.x, r.z) + 0.8, r.z); rm.setMatrixAt(i, M4); });
+    this.add(rm);
+  }
+  // camionetas estacionadas detrás de la tribuna
+  const g0 = t.sampleAtFrac(sc.grandstand);
+  const cols = ['#c9d6e2', '#d94a3a', '#3f6fb5', '#f0c541', '#6f8f4b', '#f5f1e8'];
+  const truckBody = new THREE.BoxGeometry(1.9, 0.7, 4.7); truckBody.translate(0, 0.75, 0);
+  const truckCab = new THREE.BoxGeometry(1.8, 0.8, 1.7); truckCab.translate(0, 1.5, 1.1);
+  const wheelGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.3, 10); wheelGeo.rotateZ(Math.PI / 2);
+  const wheelMat = toonMat('#2a2a2e');
+  for (let i = 0; i < 5; i++) {
+    const along = (i - 2) * 4.2 + (rnd() - 0.5) * 1.2, lat = -(W + 25 + (i % 2) * 5 + rnd() * 1.5);
+    const x = g0.x + g0.tx * along + g0.nx * lat, z = g0.z + g0.tz * along + g0.nz * lat, y = t.heightAt(x, z);
+    const grp = new THREE.Group(); grp.position.set(x, y, z); grp.rotation.y = g0.heading + Math.PI / 2 + (rnd() - 0.5) * 0.5;
+    const col = cols[i % cols.length];
+    const body = new THREE.Mesh(truckBody, toonMat(col)); body.castShadow = true; grp.add(body);
+    const cab = new THREE.Mesh(truckCab, toonMat(col)); cab.castShadow = true; grp.add(cab);
+    const glass = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.5, 0.1), toonMat('#9fd3e8')); glass.position.set(0, 1.55, 0.25); grp.add(glass);
+    for (const [wx, wz] of [[-0.95, 1.5], [0.95, 1.5], [-0.95, -1.5], [0.95, -1.5]]) { const w = new THREE.Mesh(wheelGeo, wheelMat); w.position.set(wx, 0.38, wz); grp.add(w); }
+    this.add(grp);
+    t.addBarrier({ x, z, r: 2.2, type: 'truck' });
+    (this.reserved = this.reserved || []).push({ x, z, r: 4 });
+  }
+  // parrilla: ladrillos, brasas y humo
+  const s2 = t.sampleAtFrac(sc.grandstand + 0.035);
+  const lat = -(W + 15.5), ax = s2.x + s2.nx * lat, az = s2.z + s2.nz * lat, ay = t.heightAt(ax, az);
+  const pg = new THREE.Group(); pg.position.set(ax, ay, az); pg.rotation.y = s2.heading;
+  const bricks = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.8, 0.9), toonMat('#9a5a3a')); bricks.position.y = 0.4; bricks.castShadow = true; pg.add(bricks);
+  const grill = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.05, 0.7), toonMat('#3a3a3a')); grill.position.y = 0.83; pg.add(grill);
+  const ember = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.12, 0.5), new THREE.MeshBasicMaterial({ color: '#ff7a2a' })); ember.position.y = 0.7; pg.add(ember);
+  const table = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.08, 0.9), toonMat('#c9a56a')); table.position.set(0, 0.8, -1.6); table.castShadow = true; pg.add(table);
+  this.add(pg);
+  this.asado = { x: ax, y: ay + 0.9, z: az, ember };
+  t.addBarrier({ x: ax, z: az, r: 1.2, type: 'asado' });
+  this.animated.push((dt, time) => { ember.material.color.setHSL(0.06, 1, 0.5 + 0.12 * Math.sin(time * 9) + 0.06 * Math.sin(time * 23)); });
+};
+
+World.prototype.buildAtmosphere = function () {
+  const t = this.track, rnd = mulberry32(41);
+  // bruma baja: planos con degradado radial que flotan sobre los bajos del terreno y derivan con el viento
+  const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+  const grad = g.createRadialGradient(64, 64, 4, 64, 64, 64); grad.addColorStop(0, 'rgba(255,255,255,0.55)'); grad.addColorStop(0.6, 'rgba(255,255,255,0.22)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
+  const mistTex = new THREE.CanvasTexture(c);
+  this.mist = new THREE.Group();
+  const mistGeo = new THREE.PlaneGeometry(46, 20); mistGeo.rotateX(-Math.PI / 2);
+  for (let i = 0; i < 18; i++) {
+    const s = t.samples[Math.floor(rnd() * t.n)], side = rnd() < 0.5 ? -1 : 1, lat = side * (t.W + 6 + rnd() * 50);
+    const x = s.x + s.nx * lat, z = s.z + s.nz * lat;
+    const m = new THREE.Mesh(mistGeo, new THREE.MeshBasicMaterial({ map: mistTex, transparent: true, opacity: 0.4, depthWrite: false, color: '#ffffff' }));
+    m.position.set(x, t.heightAt(x, z) + 0.6 + rnd() * 0.8, z); m.rotation.y = rnd() * 6; m.renderOrder = 2;
+    m.userData = { ph: rnd() * 6, base: 0.3 + rnd() * 0.4 };
+    this.mist.add(m);
+  }
+  this.add(this.mist);
+  // motas de polvo y polen a contraluz alrededor de la cámara
+  const N = 320, pos = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) { pos[i * 3] = (rnd() - 0.5) * 44; pos[i * 3 + 1] = (rnd() - 0.5) * 20; pos[i * 3 + 2] = (rnd() - 0.5) * 44; }
+  const pgeo = new THREE.BufferGeometry(); pgeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  this.motes = new THREE.Points(pgeo, new THREE.PointsMaterial({ size: 0.14, color: '#fff2c4', transparent: true, opacity: 0.5, depthWrite: false, sizeAttenuation: true }));
+  this.motes.frustumCulled = false; this.motes.userData = { cx: 0, cy: 0, cz: 0 };
+  this.add(this.motes);
+};
+
+World.prototype.updateAtmosphere = function (dt, fx, fz, particles, camY) {
+  const p = this.tod || {};
+  if (this.mist) {
+    const k = (this.wet ? 0.35 : 1) * (MIST[this.todName] || 0);
+    this.mist.visible = k > 0.02;
+    if (this.mist.visible) for (const m of this.mist.children) {
+      m.position.x += this.wind.x * 0.25 * dt; m.position.z += this.wind.z * 0.25 * dt;
+      const d = Math.hypot(m.position.x - fx, m.position.z - fz); if (d > 260) { m.position.x = fx + (Math.random() - 0.5) * 300; m.position.z = fz + (Math.random() - 0.5) * 300; m.position.y = this.track.heightAt(m.position.x, m.position.z) + 0.8; }
+      m.material.opacity = k * m.userData.base * (0.8 + 0.2 * Math.sin(this.time * 0.3 + m.userData.ph));
+      m.material.color.set(p.fog || '#ffffff');
+    }
+  }
+  if (this.motes) {
+    this.motes.visible = !p.night && !p.foggy && !this.wet;
+    if (this.motes.visible) {
+      const a = this.motes.geometry.attributes.position.array, u = this.motes.userData;
+      u.cx = fx; u.cy = camY; u.cz = fz; this.motes.position.set(fx, camY, fz);
+      const wx = this.wind.x * 0.35 * dt, wz = this.wind.z * 0.35 * dt, tm = this.time;
+      for (let i = 0; i < a.length; i += 3) {
+        a[i] += wx + Math.sin(tm * 0.7 + i) * 0.2 * dt; a[i + 1] += Math.sin(tm * 0.5 + i * 0.37) * 0.25 * dt - 0.05 * dt; a[i + 2] += wz + Math.cos(tm * 0.6 + i * 0.11) * 0.2 * dt;
+        if (a[i] > 22) a[i] -= 44; else if (a[i] < -22) a[i] += 44;
+        if (a[i + 2] > 22) a[i + 2] -= 44; else if (a[i + 2] < -22) a[i + 2] += 44;
+        if (a[i + 1] > 10) a[i + 1] -= 20; else if (a[i + 1] < -10) a[i + 1] += 20;
+      }
+      this.motes.geometry.attributes.position.needsUpdate = true;
+      this.motes.material.opacity = p.night ? 0 : 0.5;
+    }
+  }
+  if (particles && this.asado && Math.random() < dt * 10) particles.emit(this.asado.x + (Math.random() - 0.5) * 0.8, this.asado.y, this.asado.z + (Math.random() - 0.5) * 0.4, this.wind.x * 0.25 + (Math.random() - 0.5) * 0.3, 0.9 + Math.random() * 0.5, this.wind.z * 0.25 + (Math.random() - 0.5) * 0.3, 0.7, 4.5, 0.62, 0.6, 0.58, 0.28, 1.5, 0.9);
+};
 
 // Textura de pasto: manchas suaves que rompen la uniformidad del terreno (se multiplica con el color por vértice)
 function makeGrassTexture(wet) {

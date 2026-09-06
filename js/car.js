@@ -34,18 +34,38 @@ const tailOn = toonMat('#ff4a3a', { emissive: '#ff2a1a', emissiveIntensity: 1.6 
 const outline = outlineMat();
 const woodMat = toonMat('#a8743c');
 const suitcaseMats = ['#b5533c', '#3f6fb5', '#c9a26b', '#6f8f4b'].map(c => toonMat(c));
+const whitewallMat = toonMat('#f3eee2');
+
+function roundedRect(w, h, r) {
+  const sh = new THREE.Shape(); const x = -w / 2, y = -h / 2;
+  sh.moveTo(x + r, y); sh.lineTo(x + w - r, y); sh.quadraticCurveTo(x + w, y, x + w, y + r);
+  sh.lineTo(x + w, y + h - r); sh.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  sh.lineTo(x + r, y + h); sh.quadraticCurveTo(x, y + h, x, y + h - r);
+  sh.lineTo(x, y + r); sh.quadraticCurveTo(x, y, x + r, y);
+  return sh;
+}
+// Vidrio con marco cromado: un rectángulo redondeado de cromo apenas más grande, y el vidrio delante.
+function glassPane(w, h, r = 0.08, divider = null) {
+  const g = new THREE.Group();
+  const frame = new THREE.Mesh(new THREE.ExtrudeGeometry(roundedRect(w + 0.05, h + 0.05, r + 0.02), { depth: 0.02, bevelEnabled: false }), chromeMat); g.add(frame);
+  const glass = new THREE.Mesh(new THREE.ExtrudeGeometry(roundedRect(w, h, r), { depth: 0.02, bevelEnabled: false }), glassMat); glass.position.z = 0.012; g.add(glass);
+  if (divider != null) { const d = new THREE.Mesh(new THREE.BoxGeometry(0.02, h, 0.03), chromeMat); d.position.set(divider, 0, 0.02); g.add(d); }
+  return g;
+}
 
 // Perfil lateral del 600: trompa corta y redonda, parabrisas bastante parado, techo abovedado
 // y la cola que cae en curva continua desde el techo hasta el paragolpes (motor atrás).
 function bodyShape() {
   const sh = new THREE.Shape();
+  // Fiat 600: capó corto que cae redondo ("trompa de bulldog"), parabrisas parado, cabina alta y larga,
+  // luneta empinada y cola panzona (el motor va atrás), sin la caída larga de un Renault 4CV.
   sh.moveTo(1.55, 0.36);
   sh.splineThru([
-    new THREE.Vector2(1.62, 0.5), new THREE.Vector2(1.6, 0.66), new THREE.Vector2(1.45, 0.82), new THREE.Vector2(1.2, 0.9),
-    new THREE.Vector2(0.9, 0.95), new THREE.Vector2(0.62, 1.0), new THREE.Vector2(0.5, 1.15), new THREE.Vector2(0.36, 1.36),
-    new THREE.Vector2(0.15, 1.45), new THREE.Vector2(-0.3, 1.5), new THREE.Vector2(-0.7, 1.45), new THREE.Vector2(-1.0, 1.32),
-    new THREE.Vector2(-1.25, 1.12), new THREE.Vector2(-1.45, 0.9), new THREE.Vector2(-1.58, 0.68), new THREE.Vector2(-1.6, 0.5),
-    new THREE.Vector2(-1.52, 0.36),
+    new THREE.Vector2(1.64, 0.5), new THREE.Vector2(1.63, 0.7), new THREE.Vector2(1.54, 0.9), new THREE.Vector2(1.36, 1.02),
+    new THREE.Vector2(1.1, 1.08), new THREE.Vector2(0.8, 1.11), new THREE.Vector2(0.56, 1.16), new THREE.Vector2(0.4, 1.38),
+    new THREE.Vector2(0.18, 1.48), new THREE.Vector2(-0.3, 1.53), new THREE.Vector2(-0.78, 1.49), new THREE.Vector2(-1.04, 1.36),
+    new THREE.Vector2(-1.24, 1.12), new THREE.Vector2(-1.42, 0.9), new THREE.Vector2(-1.56, 0.72), new THREE.Vector2(-1.63, 0.54),
+    new THREE.Vector2(-1.56, 0.36),
   ]);
   sh.lineTo(-1.42, 0.36);
   sh.absarc(-1.0, 0.32, 0.42, Math.PI, 0, true);
@@ -131,7 +151,8 @@ function dirtify(mat, dirt) {
     sh.uniforms.uDirt = dirt;
     sh.vertexShader = sh.vertexShader.replace('void main() {', 'varying vec3 vDirtPos;\nvoid main() {\n vDirtPos = position;');
     sh.fragmentShader = sh.fragmentShader.replace('void main() {', 'uniform float uDirt; varying vec3 vDirtPos;\nfloat dirtHash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\nvoid main() {')
-      .replace('#include <color_fragment>', '#include <color_fragment>\n { float n = dirtHash(floor(vDirtPos.xz * 9.0)) * 0.5 + dirtHash(floor(vDirtPos.xz * 23.0 + vDirtPos.y * 7.0)) * 0.5; float m = smoothstep(1.05, 0.2, vDirtPos.y) * uDirt; m = clamp(m * (0.55 + n * 0.9), 0.0, 0.85); diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.33, 0.24, 0.15), m); }');
+      .replace('#include <color_fragment>', '#include <color_fragment>\n { float fl = dirtHash(floor(vDirtPos.xz * 170.0 + vDirtPos.y * 140.0)); float st = dirtHash(vec2(floor(vDirtPos.y * 55.0 + vDirtPos.z * 3.0), floor(vDirtPos.x * 2.0))); float sw = dirtHash(floor(vDirtPos.xz * 3.5 + vDirtPos.y * 2.0)); diffuseColor.rgb *= 0.955 + 0.045 * fl + 0.035 * st + 0.03 * sw; }\n { float n = dirtHash(floor(vDirtPos.xz * 9.0)) * 0.5 + dirtHash(floor(vDirtPos.xz * 23.0 + vDirtPos.y * 7.0)) * 0.5; float m = smoothstep(1.05, 0.2, vDirtPos.y) * uDirt; m = clamp(m * (0.55 + n * 0.9), 0.0, 0.85); diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.33, 0.24, 0.15), m); }')
+      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n { vec3 vd = normalize(vViewPosition); float fres = pow(1.0 - max(dot(vd, normal), 0.0), 3.0); vec3 hv = normalize(vd + normalize(vec3(0.35, 0.9, 0.25))); float spec = pow(max(dot(normal, hv), 0.0), 48.0); diffuseColor.rgb += (fres * 0.09 + spec * 0.28) * (1.0 - uDirt * 0.6); }');
   };
   mat.customProgramCacheKey = () => 'dirt';
   return mat;
@@ -177,15 +198,13 @@ export function createCarVisual(spec) {
   }
 
   // vidrios: parabrisas corto y parado, luneta que cae, ventanillas de puerta y custodia
-  const wsh = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.34), glassMat);
-  wsh.position.set(0, 1.34, 0.56); wsh.rotation.x = -0.58; vis.add(wsh);
-  const rw = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.4), glassMat);
-  rw.position.set(0, 1.36, -1.25); rw.rotation.x = Math.PI + 0.9; vis.add(rw);
+  // parabrisas y luneta grandes, de esquinas redondeadas y marco cromado, por fuera del bisel del casco
+  const wsh = glassPane(1.12, 0.4, 0.1); wsh.position.set(0, 1.33, 0.57); wsh.rotation.x = -0.6; vis.add(wsh);
+  const rw = glassPane(1.04, 0.42, 0.12); rw.position.set(0, 1.36, -1.3); rw.rotation.x = Math.PI + 0.88; vis.add(rw);
   for (const sx of [-1, 1]) {
-    for (const [z, w, hgt] of [[0.0, 0.68, 0.34], [-0.62, 0.36, 0.3]]) {
-      const g = new THREE.Mesh(new THREE.BoxGeometry(0.04, hgt, w), glassMat);
-      g.position.set(sx * 0.74, 1.2, z); vis.add(g);
-    }
+    // ventanilla de puerta con ventilete adelante, y custodia trasera
+    const dw = glassPane(0.8, 0.36, 0.07, 0.22); dw.position.set(sx * 0.735, 1.17, 0.1); dw.rotation.y = sx * Math.PI / 2; vis.add(dw);
+    const qw = glassPane(0.38, 0.32, 0.09); qw.position.set(sx * 0.73, 1.16, -0.6); qw.rotation.y = sx * Math.PI / 2; vis.add(qw);
     // tomas de aire del motor detrás de la custodia (marca registrada del 600)
     const scoop = box(0.1, 0.16, 0.22, darkMat); scoop.position.set(sx * 0.73, 1.06, -0.95); scoop.rotation.y = sx * 0.35; vis.add(scoop);
     const scoopLip = box(0.06, 0.18, 0.06, chromeMat); scoopLip.position.set(sx * 0.77, 1.06, -0.84); vis.add(scoopLip);
@@ -194,12 +213,15 @@ export function createCarVisual(spec) {
   }
   // moldura cromada lateral, filete de la puerta y bisagras (puerta suicida, abre hacia adelante)
   for (const sx of [-1, 1]) {
-    const strip = box(0.02, 0.035, 2.5, chromeMat); strip.position.set(sx * 0.752, 0.5, 0.05); vis.add(strip);
+    const strip = box(0.02, 0.03, 2.4, chromeMat); strip.position.set(sx * 0.752, 0.62, 0.05); vis.add(strip);
     const seamF = box(0.015, 0.62, 0.02, darkMat); seamF.position.set(sx * 0.752, 0.7, 0.46); vis.add(seamF);
     const seamR = box(0.015, 0.62, 0.02, darkMat); seamR.position.set(sx * 0.752, 0.7, -0.5); vis.add(seamR);
     for (const hy of [0.62, 0.95]) { const hinge = box(0.03, 0.08, 0.04, chromeMat); hinge.position.set(sx * 0.76, hy, -0.5); vis.add(hinge); }
     // guinos ambar bajo los faros
-    const blink = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), toonMat('#ffb340', { emissive: '#7a4a00', emissiveIntensity: 0.4 })); blink.position.set(sx * 0.6, 0.66, 1.66); vis.add(blink);
+    const blink = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), toonMat('#ffb340', { emissive: '#7a4a00', emissiveIntensity: 0.4 })); blink.position.set(sx * 0.74, 0.86, 1.15); vis.add(blink);
+    // luces de posición redondas junto al paragolpes
+    const park = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), toonMat('#fff2d0', { emissive: '#8a7a40', emissiveIntensity: 0.3 })); park.position.set(sx * 0.5, 0.6, 1.66); park.scale.z = 0.6; vis.add(park);
+    const parkRing = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.014, 6, 12), chromeMat); parkRing.position.set(sx * 0.5, 0.6, 1.68); vis.add(parkRing);
   }
   // limpiaparabrisas y espejo interior
   for (const wx of [-0.25, 0.2]) { const wiper = box(0.03, 0.02, 0.34, darkMat); wiper.position.set(wx, 1.2, 0.68); wiper.rotation.x = -0.58; wiper.rotation.y = 0.35; vis.add(wiper); }
@@ -214,31 +236,40 @@ export function createCarVisual(spec) {
   // guardabarros abultados alrededor de las ruedas (color carrocería)
   const fenderMat = dirtify(toonMat(spec.color), dirt);
   for (const [fx, fz] of [[0.7, 1.0], [-0.7, 1.0], [0.7, -1.0], [-0.7, -1.0]]) {
-    const f = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), fenderMat); f.scale.set(0.16, 0.36, 0.58); f.position.set(fx, 0.66, fz); f.castShadow = true; vis.add(f);
+    const f = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), fenderMat); f.scale.set(0.13, 0.31, 0.52); f.position.set(fx, 0.62, fz); f.castShadow = true; vis.add(f);
     const fo = new THREE.Mesh(f.geometry, outline); fo.position.copy(f.position); fo.scale.copy(f.scale); vis.add(fo);
   }
   // faros redondos sobre los guardabarros
   const headlights = [], taillights = [];
   for (const sx of [-1, 1]) {
-    const hl = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 10), lightOn);
-    hl.position.set(sx * 0.48, 0.9, 1.5); hl.scale.z = 0.75; vis.add(hl); headlights.push(hl);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.135, 0.025, 6, 14), chromeMat); ring.position.set(sx * 0.48, 0.9, 1.56); vis.add(ring);
-    // faros traseros tipo gota, con aro cromado
-    const tl = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), tailOff); tl.scale.set(1, 1.5, 0.6);
-    tl.position.set(sx * 0.52, 0.72, -1.72); tl.castShadow = false; vis.add(tl); taillights.push(tl);
-    const tring = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.02, 6, 12), chromeMat); tring.scale.set(1, 1.4, 1); tring.position.set(sx * 0.52, 0.72, -1.73); vis.add(tring);
+    // faros redondos grandes, altos sobre los guardabarros, con aro cromado
+    const hl = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 10), lightOn);
+    hl.position.set(sx * 0.5, 0.93, 1.44); hl.scale.z = 0.75; vis.add(hl); headlights.push(hl);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.145, 0.025, 6, 16), chromeMat); ring.position.set(sx * 0.5, 0.93, 1.51); vis.add(ring);
+    // faros traseros redondos sobre los guardabarros, con aro cromado
+    const tl = new THREE.Mesh(new THREE.SphereGeometry(0.085, 10, 8), tailOff); tl.scale.set(1, 1, 0.6);
+    tl.position.set(sx * 0.58, 0.82, -1.6); tl.castShadow = false; vis.add(tl); taillights.push(tl);
+    const tring = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.02, 6, 12), chromeMat); tring.position.set(sx * 0.58, 0.82, -1.62); vis.add(tring);
+    // reflector rojo chico debajo
+    const refl = new THREE.Mesh(new THREE.CircleGeometry(0.035, 10), toonMat('#b02020')); refl.position.set(sx * 0.5, 0.62, -1.7); refl.rotation.y = Math.PI; vis.add(refl);
   }
   // insignia y bigote cromado
-  const badge = new THREE.Mesh(new THREE.CircleGeometry(0.07, 12), chromeMat); badge.position.set(0, 0.86, 1.55); badge.rotation.x = -0.7; vis.add(badge);
-  const mous = box(0.9, 0.03, 0.04, chromeMat); mous.position.set(0, 0.6, 1.75); vis.add(mous);
+  // escudo FIAT al centro con bigotes cromados a los lados, y tira cromada por el medio del capó
+  const badge = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.03, 14), toonMat('#c8342a')); badge.rotation.x = Math.PI / 2; badge.position.set(0, 0.74, 1.66); vis.add(badge);
+  const badgeRing = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.014, 6, 14), chromeMat); badgeRing.position.set(0, 0.74, 1.675); vis.add(badgeRing);
+  for (const sx of [-1, 1]) for (const [dy, len] of [[0.04, 0.3], [-0.03, 0.26]]) { const wk = box(len, 0.022, 0.03, chromeMat); wk.position.set(sx * (0.12 + len / 2), 0.74 + dy, 1.655 - Math.abs(dy) * 0.4); vis.add(wk); }
+  const hoodStrip = box(0.02, 0.014, 0.66, chromeMat); hoodStrip.position.set(0, 1.03, 1.05); hoodStrip.rotation.x = 0.2; vis.add(hoodStrip);
+  const hoodStripB = box(0.02, 0.014, 0.3, chromeMat); hoodStripB.position.set(0, 0.86, 1.52); hoodStripB.rotation.x = 1.1; vis.add(hoodStripB);
+  const frontPlate = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.12), new THREE.MeshToonMaterial({ map: plateTexture('FIAT ' + spec.number), gradientMap: toonGradient() })); frontPlate.position.set(0, 0.42, 1.86); vis.add(frontPlate);
   // tapa del motor: junta oscura alrededor, rejilla de lamas en un hueco y manija cromada
-  const lid = new THREE.Group(); lid.position.set(0, 1.1, -1.4); lid.rotation.x = Math.PI + 0.85;
-  const seam = new THREE.Mesh(new THREE.PlaneGeometry(0.98, 0.62), toonMat('#1d130c')); seam.position.z = 0.005; lid.add(seam);
-  const lidPanel = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.54), fenderMat); lidPanel.position.z = 0.012; lid.add(lidPanel);
-  const grille = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.26), darkMat); grille.position.set(0, -0.04, 0.02); lid.add(grille);
-  for (let i = 0; i < 5; i++) { const slat = box(0.58, 0.028, 0.02, chromeMat); slat.position.set(0, -0.14 + i * 0.05, 0.03); lid.add(slat); }
-  const lidHandle = box(0.16, 0.035, 0.03, chromeMat); lidHandle.position.set(0, 0.2, 0.03); lid.add(lidHandle);
-  const emblem = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.07), new THREE.MeshToonMaterial({ map: plateTexture('600'), gradientMap: toonGradient() })); emblem.position.set(-0.28, 0.2, 0.03); emblem.rotation.z = Math.PI; lid.add(emblem);
+  const lid = new THREE.Group(); lid.position.set(0, 0.98, -1.49); lid.rotation.x = Math.PI + 0.62;
+  const seam = new THREE.Mesh(new THREE.ShapeGeometry(roundedRect(0.96, 0.54, 0.1)), toonMat('#1d130c')); seam.position.z = 0.005; lid.add(seam);
+  const lidPanel = new THREE.Mesh(new THREE.ShapeGeometry(roundedRect(0.9, 0.48, 0.09)), fenderMat); lidPanel.position.z = 0.012; lid.add(lidPanel);
+  // parrilla ancha de lamas cromadas (la marca registrada de la cola del 600)
+  const grille = new THREE.Mesh(new THREE.ShapeGeometry(roundedRect(0.7, 0.28, 0.05)), darkMat); grille.position.set(0, -0.06, 0.02); lid.add(grille);
+  for (let i = 0; i < 7; i++) { const slat = box(0.66, 0.02, 0.02, chromeMat); slat.position.set(0, -0.18 + i * 0.04, 0.03); lid.add(slat); }
+  const lidHandle = box(0.14, 0.03, 0.03, chromeMat); lidHandle.position.set(0, 0.18, 0.03); lid.add(lidHandle);
+  const emblem = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.065), new THREE.MeshToonMaterial({ map: plateTexture('600'), gradientMap: toonGradient() })); emblem.position.set(-0.3, 0.18, 0.03); emblem.rotation.z = Math.PI; lid.add(emblem);
   vis.add(lid);
   // luz de patente y caño de escape
   const plateLamp = box(0.14, 0.05, 0.08, chromeMat); plateLamp.position.set(0, 0.6, -1.74); vis.add(plateLamp);
@@ -250,8 +281,8 @@ export function createCarVisual(spec) {
   addPart(mkBumper(1.8), 'front', 0.55);
   addPart(mkBumper(-1.78), 'rear', 0.55);
   // espejo
-  const mirror = box(0.1, 0.08, 0.05, chromeMat); mirror.position.set(0.86, 1.05, 0.45); addPart(mirror, 'left', 0.35);
-  const mirrorArm = box(0.14, 0.02, 0.02, chromeMat); mirrorArm.position.set(0.8, 1.03, 0.45); vis.add(mirrorArm);
+  const mirror = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.03, 12), chromeMat); mirror.rotation.z = Math.PI / 2; mirror.position.set(0.88, 1.06, 0.5); addPart(mirror, 'left', 0.35);
+  const mirrorArm = box(0.16, 0.02, 0.02, chromeMat); mirrorArm.position.set(0.8, 1.02, 0.5); mirrorArm.rotation.z = 0.35; vis.add(mirrorArm);
   // patente
   const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.13), new THREE.MeshToonMaterial({ map: plateTexture('FIAT ' + spec.number), gradientMap: toonGradient() }));
   plate.position.set(0, 0.5, -1.74); plate.rotation.y = Math.PI; addPart(plate, 'rear', 0.8);
@@ -292,14 +323,17 @@ export function createCarVisual(spec) {
 
   // ruedas chicas con tazas grandes
   const wheels = [];
-  const wheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 14);
-  const hubGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.03, 12);
+  const wheelGeo = new THREE.CylinderGeometry(0.29, 0.29, 0.19, 16);
+  const rimGeo = new THREE.CylinderGeometry(0.19, 0.19, 0.03, 14);
+  const wwGeo = new THREE.TorusGeometry(0.235, 0.028, 6, 18);
+  const rimMat = dirtify(toonMat(spec.color), dirt);
   for (const [x, z, steer] of [[0.64, 1.0, true], [-0.64, 1.0, true], [0.64, -1.0, false], [-0.64, -1.0, false]]) {
-    const w = new THREE.Group(); w.position.set(x, 0.3, z);
+    const w = new THREE.Group(); w.position.set(x, 0.29, z);
     const tire = new THREE.Mesh(wheelGeo, tireMat); tire.rotation.z = Math.PI / 2; tire.castShadow = true;
     const spin = new THREE.Group(); spin.add(tire);
-    const hub = new THREE.Mesh(hubGeo, hubMat); hub.rotation.z = Math.PI / 2; hub.position.x = Math.sign(x) * 0.1; spin.add(hub);
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), chromeMat); dome.scale.set(0.5, 1, 1); dome.position.x = Math.sign(x) * 0.12; spin.add(dome);
+    const rim = new THREE.Mesh(rimGeo, rimMat); rim.rotation.z = Math.PI / 2; rim.position.x = Math.sign(x) * 0.095; spin.add(rim);
+    if (spec.whitewall !== false) { const ww = new THREE.Mesh(wwGeo, whitewallMat); ww.rotation.y = Math.PI / 2; ww.position.x = Math.sign(x) * 0.1; spin.add(ww); }
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), chromeMat); dome.scale.set(0.35, 1, 1); dome.position.x = Math.sign(x) * 0.11; spin.add(dome);
     const ol = new THREE.Mesh(wheelGeo, outline); ol.rotation.z = Math.PI / 2; spin.add(ol);
     w.add(spin); vis.add(w);
     wheels.push({ group: w, spin, steer, side: Math.sign(x) });

@@ -25,7 +25,7 @@ export class AIDriver {
     this.skill = profile.skill; this.aggr = profile.aggression; this.difficulty = profile.difficulty || 1;
     this.rnd = mulberry32(profile.seed || 1);
     this.bias = (this.rnd() - 0.5) * 3; this.biasTarget = this.bias; this.latTarget = null;
-    this.reaction = 0.15 + (1 - this.skill) * 0.7 + this.rnd() * 0.25;
+    this.reaction = 0.05 + (1 - this.skill) * 0.25 + this.rnd() * 0.12; // reflejos de piloto: casi como el jugador
     this.mistakeT = 4 + this.rnd() * 8; this.mistake = 0; this.mistakeSteer = 0;
     this.stuckT = 0; this.recoverT = 0; this.recoverSteer = 0; this.lostT = 0; this.slowT = 0; this.resets = 0;
     this.input = { steer: 0, throttle: 0, brake: 0, handbrake: false };
@@ -207,7 +207,7 @@ export class AIDriver {
     // el acelerador se suaviza; el freno responde al instante
     this.throttleSmooth = lerp(this.throttleSmooth, clamp(acc, 0, 1), clamp(dt * 6, 0, 1));
     inp.throttle = acc > 0 ? this.throttleSmooth : 0;
-    if (sinceGreen < 3) inp.throttle *= 0.55 + 0.45 * clamp(sinceGreen / 3, 0, 1); // largada progresiva
+    if (sinceGreen < 2) inp.throttle *= 0.8 + 0.2 * clamp(sinceGreen / 2, 0, 1); // largada progresiva, breve
     inp.brake = acc < 0 ? clamp(-acc, 0, 1) : 0;
     if (acc <= 0) this.throttleSmooth = 0;
     // no frenar a fondo en plena curva: el freno se come el agarre lateral

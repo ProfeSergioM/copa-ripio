@@ -207,6 +207,8 @@ td.num, th.num { text-align: right; }
 
 /* multijugador */
 .mp-panel { width: min(560px, 94vw); }
+.inline { display: inline-flex; gap: 8px; align-items: center; }
+.btn.mini { padding: 6px 12px; font-size: 14px; }
 .mp-pilot { background: #fff8ec; border: 3px solid var(--ink); border-radius: 12px; padding: 4px 12px 8px; margin-bottom: 10px; }
 .mp-pilot label, .mp-pilot .row { margin: 5px 0; }
 .mp-pilot-title { font-weight: 700; margin: 4px 0 2px; }

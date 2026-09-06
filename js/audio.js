@@ -3,6 +3,16 @@ import { clamp, lerp } from './util.js';
 
 function midiHz(m) { return 440 * Math.pow(2, (m - 69) / 12); }
 
+// Perfiles de sonido de motor (elegibles en Ajustes). sample/synth: mezcla de muestras grabadas y sintetizador;
+// rasp: rasgado del escape; filt: brillo; pitch: régimen aparente; lfo: traqueteo; pops: petardeo al soltar.
+export const ENGINE_PROFILES = {
+  muestras:  { name: 'Grabado (muestras)', desc: 'Loops grabados de un 4 cilindros, cruzados por régimen. El más realista.', sample: 1.0, synth: 0.3, rasp: 1.0, filt: 1.0, pitch: 1.0, lfo: 11, pops: 1.0 },
+  fabrica:   { name: 'Fitito de fábrica', desc: 'Sintetizador suave y redondo, escape original. Tranquilo y parejo.', sample: 0, synth: 1.0, rasp: 0.45, filt: 0.85, pitch: 1.0, lfo: 9, pops: 0.4 },
+  escape:    { name: 'Escape libre', desc: 'Caño recto: rasposo, brillante y con petardeo al soltar.', sample: 0, synth: 1.15, rasp: 2.4, filt: 1.5, pitch: 1.0, lfo: 12, pops: 2.2 },
+  preparado: { name: 'Preparado de picadas', desc: 'Motor 1100 con dos carburadores: gira más alto, más nervioso.', sample: 0, synth: 1.1, rasp: 1.3, filt: 1.3, pitch: 1.28, lfo: 15, pops: 1.4 },
+  mixto:     { name: 'Grabado con escape libre', desc: 'Las muestras grabadas más el rasgado del sintetizador encima. Con cuerpo.', sample: 0.85, synth: 0.7, rasp: 2.0, filt: 1.3, pitch: 1.0, lfo: 12, pops: 1.8 },
+};
+
 export class GameAudio {
   constructor() { this.ctx = null; this.volume = 0.8; this.muted = false; this.musicOn = true; this.state = 'menu'; this.aiVoices = []; this.birdT = 1; this.crowdT = 0; this.popT = 0; }
 
@@ -16,6 +26,7 @@ export class GameAudio {
     const len = ctx.sampleRate * 2, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
     let b0 = 0; for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; b0 = 0.98 * b0 + 0.02 * w; d[i] = (w * 0.6 + b0 * 3) * 0.5; }
     this.noiseBuf = buf;
+    this.profile = ENGINE_PROFILES.muestras; this.previewT = 0;
     this.engine = this.makeEngineVoice(true);
     this.engine.out.connect(this.master);
     for (let i = 0; i < 7; i++) { const v = this.makeEngineVoice(true); v.pan = ctx.createStereoPanner(); v.out.connect(v.pan); v.pan.connect(this.master); v.car = null; this.aiVoices.push(v); }
@@ -105,14 +116,26 @@ export class GameAudio {
     lfo.start();
     return { out, filter, oscs, lfo, lg, raspF, raspG, rpm: 1000, load: 0 };
   }
+  setEngineProfile(key) {
+    this.profile = ENGINE_PROFILES[key] || ENGINE_PROFILES.muestras;
+    if (!this.ctx) return;
+    for (const v of [this.engine, ...(this.aiVoices || [])]) if (v && v.lfo) v.lfo.frequency.setTargetAtTime(this.profile.lfo, this.ctx.currentTime, 0.1);
+  }
+  // acelerón de prueba desde Ajustes: sube a fondo y suelta
+  previewEngine() { if (!this.ctx) return; this.previewT = 3.4; }
   setEngine(v, rpm, load, gain, misfire, doppler = 1) {
-    if (v.sample) { this.setSampleEngine(v.sample, rpm, load, gain * 1.15, misfire, doppler); gain *= 0.3; }
-    const f = rpm / 30 * doppler; // 4 cilindros, 4 tiempos
+    const P = this.profile || ENGINE_PROFILES.muestras;
     const t = this.ctx.currentTime;
+    if (v.sample) {
+      if (P.sample > 0) this.setSampleEngine(v.sample, rpm, load, gain * 1.15 * P.sample, misfire, doppler);
+      else v.sample.out.gain.setTargetAtTime(0, t, 0.05);
+      gain *= P.synth;
+    }
+    const f = rpm / 30 * doppler * P.pitch; // 4 cilindros, 4 tiempos
     for (const { o, mult } of v.oscs) o.frequency.setTargetAtTime(f * mult, t, 0.03);
-    if (v.raspF) { v.raspF.frequency.setTargetAtTime(f * 6 + 300, t, 0.05); v.raspG.gain.setTargetAtTime(0.06 + load * 0.2, t, 0.05); }
+    if (v.raspF) { v.raspF.frequency.setTargetAtTime(f * 6 + 300, t, 0.05); v.raspG.gain.setTargetAtTime((0.06 + load * 0.2) * P.rasp, t, 0.05); }
     const rn = clamp((rpm - 900) / 5500, 0, 1);
-    v.filter.frequency.setTargetAtTime(280 + load * 1400 + rn * 2200, t, 0.05);
+    v.filter.frequency.setTargetAtTime((280 + load * 1400 + rn * 2200) * P.filt, t, 0.05);
     v.lg.gain.setTargetAtTime(1 + rn * 3, t, 0.1);
     const g = gain * (0.35 + 0.65 * load) * (0.6 + 0.4 * rn) * (misfire ? 0.15 : 1);
     v.out.gain.setTargetAtTime(g, t, misfire ? 0.01 : 0.04);
@@ -171,14 +194,23 @@ export class GameAudio {
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime;
     const racing = this.state === 'race';
+    // acelerón de prueba (Ajustes): manda sobre el motor real
+    let preview = false;
+    if (this.previewT > 0) {
+      this.previewT -= dt; preview = true;
+      const u = clamp(1 - this.previewT / 3.4, 0, 1);
+      const rpm = u < 0.55 ? 1100 + (u / 0.55) * 5200 : 6300 - ((u - 0.55) / 0.45) * 4900;
+      this.setEngine(this.engine, rpm, u < 0.55 ? 1 : 0.12, 0.62, false);
+      if (u > 0.55 && Math.random() < dt * 4 * (this.profile.pops || 1)) this.pop();
+    }
     // motor del jugador
     if (player) {
       const load = clamp(player.throttle * 0.9 + 0.1, 0.1, 1);
-      this.setEngine(this.engine, player.rpm, racing ? load : 0.15, racing ? 0.62 : 0.14, player.misfiring);
+      if (!preview) this.setEngine(this.engine, player.rpm, racing ? load : 0.15, racing ? 0.62 : 0.14, player.misfiring);
       if (player.shifted) { this.gearShift(); player.shifted = 0; }
       // petardeo al soltar
       this.popT -= dt;
-      if (racing && player.throttle < 0.1 && player.rpm > 4200 && this.popT < 0 && Math.random() < 0.3) { this.pop(); this.popT = 0.15; }
+      if (racing && player.throttle < 0.1 && player.rpm > 4200 && this.popT < 0 && Math.random() < 0.3 * (this.profile.pops || 1)) { this.pop(); this.popT = 0.15; }
       // rodadura
       const sp = Math.abs(player.speed);
       const onGravel = player.surface === 'gravel' || player.surface === 'shoulder';
@@ -246,26 +278,64 @@ export class GameAudio {
     this.musicGain.gain.setTargetAtTime(wantMusic ? 0.22 : 0, t, 0.4);
   }
 
-  // ---- musiquita de menú (tarantela de acordeón sintético)
+  // ---- musiquita de menú: tarantela napolitana (melodía propia) en 6/8, con mandolina en trémolo,
+  // acordeón en acordes, bajo "um-pa" y pandereta. Dos partes: La menor y Do mayor.
   startMusicScheduler() {
-    const melody = [69, 76, 72, 69, 76, 72, 71, 76, 74, 71, 76, 74, 72, 76, 81, 79, 77, 76, 74, 77, 71, 76, 69, 0,
-      69, 76, 72, 69, 76, 72, 71, 76, 74, 71, 76, 74, 72, 76, 81, 84, 83, 81, 79, 77, 76, 74, 72, 71];
-    const bass = [57, 0, 0, 52, 0, 0, 52, 0, 0, 59, 0, 0, 57, 0, 0, 60, 0, 0, 52, 0, 0, 57, 0, 0,
-      57, 0, 0, 52, 0, 0, 52, 0, 0, 59, 0, 0, 57, 0, 0, 60, 0, 0, 52, 0, 0, 57, 0, 0];
-    const stepDur = 0.16;
+    const R = 0;
+    const melody = [
+      69, 72, 76, 81, 76, 72,  71, 74, 77, 80, 77, 74,  69, 72, 76, 81, 76, 72,  80, 77, 74, 69, R, R,
+      76, 79, 81, 84, 81, 79,  77, 79, 81, 83, 81, 79,  76, 74, 72, 71, 72, 74,  69, R, R, 69, R, R,
+      72, 76, 79, 84, 79, 76,  74, 77, 81, 86, 81, 77,  71, 74, 79, 83, 79, 74,  72, 76, 79, 72, R, R,
+      81, 79, 77, 76, 74, 72,  71, 72, 74, 76, 77, 79,  80, 79, 77, 76, 74, 71,  69, R, R, 69, 76, 81,
+    ];
+    // por compás: [raíz del bajo, quinta, acorde del acordeón]
+    const bars = [
+      [45, 52, [57, 60, 64]], [40, 47, [56, 59, 64]], [45, 52, [57, 60, 64]], [40, 47, [56, 59, 64]],
+      [45, 52, [57, 60, 64]], [41, 48, [57, 60, 65]], [40, 47, [56, 59, 62]], [45, 52, [57, 60, 64]],
+      [36, 43, [55, 60, 64]], [38, 45, [57, 62, 65]], [43, 50, [55, 59, 62]], [36, 43, [55, 60, 64]],
+      [41, 48, [57, 60, 65]], [43, 50, [55, 59, 62]], [40, 47, [56, 59, 62]], [45, 52, [57, 60, 64]],
+    ];
+    const stepDur = 0.135; // corchea (6/8 a ~148 negras con puntillo)
     const tick = () => {
       const ctx = this.ctx; if (!ctx) return;
       while (this.musicNext < ctx.currentTime + 0.4) {
-        const i = this.musicStep % melody.length;
+        const i = this.musicStep % melody.length, bar = bars[Math.floor(i / 6) % bars.length], k = i % 6;
         const t0 = Math.max(this.musicNext, ctx.currentTime);
-        if (melody[i]) this.note(midiHz(melody[i]), t0, stepDur * 0.95, 'triangle', 0.5, true);
-        if (bass[i]) this.note(midiHz(bass[i]), t0, stepDur * 2.6, 'square', 0.25, false);
-        if (i % 3 === 0) this.note(midiHz(melody[i] ? melody[i] - 12 : 57), t0, stepDur * 0.5, 'sawtooth', 0.08, false);
+        const round = Math.floor(this.musicStep / melody.length);
+        const n = melody[i];
+        if (n) {
+          // mandolina: dos o tres púas por corchea (trémolo)
+          const plucks = round % 2 === 1 ? 3 : 2;
+          for (let q = 0; q < plucks; q++) this.pluck(midiHz(n), t0 + q * stepDur / plucks, 0.3 - q * 0.04);
+        }
+        if (k === 0) this.note(midiHz(bar[0]), t0, stepDur * 1.6, 'square', 0.2, false);
+        if (k === 3) this.note(midiHz(bar[1]), t0, stepDur * 1.2, 'square', 0.16, false);
+        if (k === 0 || k === 3) for (const c of bar[2]) this.note(midiHz(c), t0 + 0.01, stepDur * (k === 0 ? 1.4 : 1.0), 'sawtooth', 0.045, true);
+        if (k === 1 || k === 2 || k === 4 || k === 5) this.shake(t0, k === 4 ? 0.16 : 0.09);
+        if (k === 3) this.shake(t0, 0.22);
         this.musicNext += stepDur; this.musicStep++;
       }
     };
     this.musicNext = this.ctx.currentTime + 0.1;
     this.musicTimer = setInterval(tick, 120);
+  }
+  // púa de mandolina: ataque seco y caída rápida, con un poco de brillo
+  pluck(freq, t0, gain) {
+    const ctx = this.ctx;
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(gain, t0 + 0.004); g.gain.setTargetAtTime(0.0001, t0 + 0.01, 0.045);
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(5200, t0); f.frequency.setTargetAtTime(1400, t0 + 0.01, 0.06);
+    const o1 = ctx.createOscillator(); o1.type = 'triangle'; o1.frequency.value = freq;
+    const o2 = ctx.createOscillator(); o2.type = 'sawtooth'; o2.frequency.value = freq * 2.003; const g2 = ctx.createGain(); g2.gain.value = 0.25;
+    o1.connect(f); o2.connect(g2); g2.connect(f); f.connect(g); g.connect(this.musicGain);
+    o1.start(t0); o2.start(t0); o1.stop(t0 + 0.4); o2.stop(t0 + 0.4);
+  }
+  // pandereta: ruido corto muy agudo con un poco de sonajero
+  shake(t0, gain) {
+    const ctx = this.ctx; if (!this.noiseBuf) return;
+    const src = ctx.createBufferSource(); src.buffer = this.noiseBuf;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 6500; bp.Q.value = 1.2;
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(gain, t0 + 0.003); g.gain.setTargetAtTime(0.0001, t0 + 0.02, 0.035);
+    src.connect(bp); bp.connect(g); g.connect(this.musicGain); src.start(t0, Math.random() * 0.5); src.stop(t0 + 0.2);
   }
   note(freq, t0, dur, type, gain, detune) {
     const ctx = this.ctx;

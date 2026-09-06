@@ -1,4 +1,6 @@
-# Copa Ripio — Campeonato Fiat 600
+# Formula 600 — Campeonato Fiat 600 en ripio
+
+(Antes se llamaba Copa Ripio; el repo y la URL conservan ese nombre.)
 
 Juego de carreras web (Three.js + Web Audio) con 20 Fiat 600 caricaturescos en pistas de
 ripio rural. Todo es procedural: los autos, las pistas, el relieve, el decorado, el clima,
@@ -157,6 +159,30 @@ no infla esa estimación: la ventaja viene del "tune" real del auto (par, agarre
 Fuera del ripio van despacio (9 m/s en la zanja) para poder salir, y un auto perdido o trabado más de
 5–6 s vuelve al borde de la pista. Se calibra con `herramientas/solo2.mjs` (un auto) y `herramientas/fuera.mjs`
 (20 autos: segundos fuera de pista por vuelta y por sector; `DIF=1.14 CIRCUITO=ovalo REVERSE=1 DIAG=1`).
+
+## El Fitito y la música
+
+El modelo sigue fotos del Fiat 600 D: faros redondos altos sobre los guardabarros con aro cromado, luces de
+posición junto al paragolpes, escudo con bigotes cromados, tira por el medio del capó, ventanillas grandes de
+esquinas redondeadas con marco cromado y ventilete, custodia trasera, tomas de aire, parrilla ancha de lamas
+sobre la tapa del motor, luces traseras redondas en los guardabarros, paragolpes con defensas, ruedas chicas
+con llanta color carrocería, taza cromada y banda blanca. La música del menú es una tarantela napolitana
+propia en 6/8: mandolina en trémolo (`pluck`), acordeón en acordes, bajo "um-pa" y pandereta (`shake`).
+
+## Sonido del motor
+
+En Ajustes hay cinco perfiles de motor (`ENGINE_PROFILES` en `js/audio.js`) con botón "Probar" que hace un
+acelerón: grabado (muestras cruzadas por régimen), Fitito de fábrica (sintetizador suave), escape libre
+(rasposo, con petardeo), preparado de picadas (gira más alto) y grabado con escape libre. El perfil vale
+para el auto propio y para los rivales.
+
+## Ambiente
+
+Bruma baja al amanecer, con niebla y al anochecer (planos con degradado que derivan con el viento), motas
+de polvo y polen a contraluz alrededor de la cámara, parrilla con humo detrás de la tribuna, camionetas de
+hinchas estacionadas, rollos de pasto en el campo. El terreno tiene lomadas y montículos más marcados y los
+circuitos planos llevan `heightScale` 1,35 (con 1,45 la IA empieza a sufrir). La pintura de los autos tiene
+metalizado fino, veladuras y un brillo de laca en el shader (`dirtify` en `js/car.js`).
 
 ## Multijugador
 

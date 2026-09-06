@@ -6,7 +6,7 @@ import { Noise2D, clamp, lerp, smoothstep, mulberry32 } from './util.js';
 
 export const CIRCUITS = {
   polvaredas: {
-    id: 'polvaredas', name: 'Autódromo Rural de Polvaredas', closed: true, start: [95, -6],
+    id: 'polvaredas', name: 'Autódromo Rural de Polvaredas', closed: true, start: [95, -6], heightScale: 1.35,
     points: [
       [0, 0, 0], [55, -3, 0.1], [110, -5, 0.4], [160, -5, 0.8],
       [205, 30, 2], [200, 80, 3.5], [165, 112, 5], [125, 100, 4.5],
@@ -22,7 +22,7 @@ export const CIRCUITS = {
     scenery: { grandstand: 0.035, windmill: 0.76, house: 0.36, bridge: 0.25, poplars: [0.56, 0.68], willow: 0.16 },
   },
   ovalo: {
-    id: 'ovalo', name: 'Óvalo de Tierra del Club Social', closed: true, start: [0, -55],
+    id: 'ovalo', name: 'Óvalo de Tierra del Club Social', closed: true, start: [0, -55], heightScale: 1.35,
     points: [
       [-110, -52, 0], [-40, -56, 0.2], [40, -56, 0.2], [110, -52, 0.4], [148, -22, 1.2], [152, 18, 1.4], [120, 50, 0.8],
       [40, 58, 0.3], [-40, 58, 0.3], [-120, 50, 0.6], [-152, 18, 1.5], [-148, -22, 1.3],
@@ -63,7 +63,8 @@ export class Track {
 
   // ---------- Trazado ----------
   buildSamples() {
-    let pts = this.def.points.map(p => new THREE.Vector3(p[0], p[2], p[1]));
+    const hs = (typeof process !== 'undefined' && process.env && process.env.ALTURA) ? parseFloat(process.env.ALTURA) : (this.def.heightScale || 1); // más desnivel en los circuitos planos
+    let pts = this.def.points.map(p => new THREE.Vector3(p[0], p[2] * hs, p[1]));
     if (this.reverse) pts = [pts[0], ...pts.slice(1).reverse()];
     const curve = new THREE.CatmullRomCurve3(pts, this.closed, 'centripetal', 0.5);
     curve.arcLengthDivisions = 4000;
@@ -174,13 +175,14 @@ export class Track {
   // ---------- Relieve ----------
   baseHeight(x, z) {
     const nz = this.noise;
-    let h = 3.2 * nz.fbm(x / 150, z / 150, 3) + 1.1 * nz.fbm(x / 38 + 7, z / 38 + 3, 2) + 5 * nz.fbm(x / 420 + 2, z / 420, 2);
+    // lomadas grandes, ondulaciones medianas, montículos chicos en el pasto y cerros lejanos
+    let h = 4.6 * nz.fbm(x / 150, z / 150, 3) + 2.2 * nz.fbm(x / 38 + 7, z / 38 + 3, 2) + 0.55 * nz.fbm(x / 11 + 3, z / 11 + 9, 2) + 8 * nz.fbm(x / 420 + 2, z / 420, 2);
     const b = this.bounds;
     // distancia al rectángulo del trazado: cerros al fondo
     const ddx = Math.max(b.minX - x, 0, x - b.maxX), ddz = Math.max(b.minZ - z, 0, z - b.maxZ);
     const r = Math.hypot(ddx, ddz);
     const far = smoothstep(120, 340, r);
-    h += far * (30 + 45 * (0.5 + nz.fbm(x / 90, z / 90, 3)));
+    h += far * (42 + 62 * (0.5 + nz.fbm(x / 90, z / 90, 3)));
     return h;
   }
   buildHeightfield() {
