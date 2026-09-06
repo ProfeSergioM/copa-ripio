@@ -26,7 +26,7 @@ export class GameAudio {
     const len = ctx.sampleRate * 2, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
     let b0 = 0; for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; b0 = 0.98 * b0 + 0.02 * w; d[i] = (w * 0.6 + b0 * 3) * 0.5; }
     this.noiseBuf = buf;
-    this.profile = ENGINE_PROFILES.muestras; this.previewT = 0;
+    this.profile = ENGINE_PROFILES.preparado; this.previewT = 0;
     this.engine = this.makeEngineVoice(true);
     this.engine.out.connect(this.master);
     for (let i = 0; i < 7; i++) { const v = this.makeEngineVoice(true); v.pan = ctx.createStereoPanner(); v.out.connect(v.pan); v.pan.connect(this.master); v.car = null; this.aiVoices.push(v); }
@@ -117,14 +117,14 @@ export class GameAudio {
     return { out, filter, oscs, lfo, lg, raspF, raspG, rpm: 1000, load: 0 };
   }
   setEngineProfile(key) {
-    this.profile = ENGINE_PROFILES[key] || ENGINE_PROFILES.muestras;
+    this.profile = ENGINE_PROFILES[key] || ENGINE_PROFILES.preparado;
     if (!this.ctx) return;
     for (const v of [this.engine, ...(this.aiVoices || [])]) if (v && v.lfo) v.lfo.frequency.setTargetAtTime(this.profile.lfo, this.ctx.currentTime, 0.1);
   }
   // acelerón de prueba desde Ajustes: sube a fondo y suelta
   previewEngine() { if (!this.ctx) return; this.previewT = 3.4; }
   setEngine(v, rpm, load, gain, misfire, doppler = 1) {
-    const P = this.profile || ENGINE_PROFILES.muestras;
+    const P = this.profile || ENGINE_PROFILES.preparado;
     const t = this.ctx.currentTime;
     if (v.sample) {
       if (P.sample > 0) this.setSampleEngine(v.sample, rpm, load, gain * 1.15 * P.sample, misfire, doppler);

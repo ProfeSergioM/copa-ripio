@@ -71,7 +71,7 @@ async function init() {
 
   app.particles = new Particles(scene, 2500);
   app.debris = new Debris(scene, null);
-  app.audio = new GameAudio(); app.audio.setEngineProfile(app.settings.engine || 'muestras');
+  app.audio = new GameAudio(); app.audio.setEngineProfile(app.settings.engine || 'preparado');
   app.audio.volume = app.settings.volume; app.audio.musicOn = app.settings.music;
   app.chase = new ChaseCamera(camera, null);
   app.mp = new Multiplayer(app); app.mp.onLobby = renderLobby; app.mp.onStart = startMultiplayerRace; app.mp.onResults = onMpResults; app.mp.onHostGone = () => { app.ui.toast('El anfitrión se desconectó', 'bad', 4000); };
@@ -334,9 +334,9 @@ function bindUI() {
     if (app.champ) { const me = app.champ.roster[0]; Object.assign(me, { color: app.playerSpec.color, roofColor: app.playerSpec.roofColor, accessory: app.playerSpec.accessory, stripes: app.playerSpec.stripes, number: app.playerSpec.number }); const row = app.champ.table.find(t => t.name === me.name); if (row) { row.color = me.color; row.number = me.number; } app.champ.save(); }
     showcase(); ui.showScreen('menu');
   };
-  const fillEngine = () => { const sel = $('in-engine'); if (!sel.options.length) for (const [k, v] of Object.entries(ENGINE_PROFILES)) { const o = document.createElement('option'); o.value = k; o.textContent = v.name; sel.appendChild(o); } sel.value = app.settings.engine || 'muestras'; $('engine-desc').textContent = (ENGINE_PROFILES[sel.value] || {}).desc || ''; };
+  const fillEngine = () => { const sel = $('in-engine'); if (!sel.options.length) for (const [k, v] of Object.entries(ENGINE_PROFILES)) { const o = document.createElement('option'); o.value = k; o.textContent = v.name; sel.appendChild(o); } sel.value = app.settings.engine || 'preparado'; $('engine-desc').textContent = (ENGINE_PROFILES[sel.value] || {}).desc || ''; };
   $('in-engine').onchange = (e) => { app.settings.engine = e.target.value; app.audio.setEngineProfile(app.settings.engine); $('engine-desc').textContent = ENGINE_PROFILES[app.settings.engine].desc; saveSettings(); };
-  $('btn-engine-test').onclick = () => { app.audio.init(); app.audio.setEngineProfile(app.settings.engine || 'muestras'); app.audio.previewEngine(); };
+  $('btn-engine-test').onclick = () => { app.audio.init(); app.audio.setEngineProfile(app.settings.engine || 'preparado'); app.audio.previewEngine(); };
   $('btn-settings').onclick = () => { fillEngine(); $('in-difficulty').value = String(app.settings.difficulty); $('in-volume').value = app.settings.volume; $('in-music').checked = app.settings.music; $('in-shadows').checked = app.settings.shadows; $('in-laps').value = app.settings.laps; ui.showScreen('settings'); };
   $('btn-settings-back').onclick = () => {
     app.settings.difficulty = parseFloat($('in-difficulty').value); app.settings.volume = parseFloat($('in-volume').value); app.settings.music = $('in-music').checked; app.settings.shadows = $('in-shadows').checked; app.settings.laps = parseInt($('in-laps').value);

@@ -236,7 +236,7 @@ export function createCarVisual(spec) {
   // guardabarros abultados alrededor de las ruedas (color carrocería)
   const fenderMat = dirtify(toonMat(spec.color), dirt);
   for (const [fx, fz] of [[0.7, 1.0], [-0.7, 1.0], [0.7, -1.0], [-0.7, -1.0]]) {
-    const f = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), fenderMat); f.scale.set(0.13, 0.31, 0.52); f.position.set(fx, 0.62, fz); f.castShadow = true; vis.add(f);
+    const f = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), fenderMat); if (fz > 0) f.scale.set(0.05, 0.24, 0.44); else f.scale.set(0.1, 0.28, 0.48); f.position.set(fx, 0.6, fz); f.castShadow = true; vis.add(f); // adelante casi plano, atrás un bulto discreto
     const fo = new THREE.Mesh(f.geometry, outline); fo.position.copy(f.position); fo.scale.copy(f.scale); vis.add(fo);
   }
   // faros redondos sobre los guardabarros

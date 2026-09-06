@@ -173,8 +173,8 @@ propia en 6/8: mandolina en trémolo (`pluck`), acordeón en acordes, bajo "um-p
 
 En Ajustes hay cinco perfiles de motor (`ENGINE_PROFILES` en `js/audio.js`) con botón "Probar" que hace un
 acelerón: grabado (muestras cruzadas por régimen), Fitito de fábrica (sintetizador suave), escape libre
-(rasposo, con petardeo), preparado de picadas (gira más alto) y grabado con escape libre. El perfil vale
-para el auto propio y para los rivales.
+(rasposo, con petardeo), preparado de picadas (gira más alto; es el que viene por defecto) y grabado con
+escape libre. El perfil vale para el auto propio y para los rivales.
 
 ## Ambiente
 
