@@ -2,7 +2,7 @@
 // El anfitrión simula los rivales de IA y su propio auto; cada invitado simula solo el suyo. Todo lo demás
 // llega por red y se interpola. Los choques contra autos de otros se resuelven localmente (ellos no se mueven).
 import { Net, randomCode } from './net.js';
-import { DRIVER_NAMES, LIVERY_COLORS } from './config.js';
+import { LIVERY_COLORS } from './config.js';
 import { ROUNDS } from './championship.js';
 import { mulberry32, wrapAngle, lerp, clamp } from './util.js';
 
@@ -60,7 +60,7 @@ export class Multiplayer {
     else if (!this.readyT) { this.readyT = performance.now(); setTimeout(() => this.tryGo(), 20500); }
   }
 
-  // Plantel: humanos primero (orden de entrada), rivales IA hasta completar 20. Igual en todos los peers.
+  // Plantel: solo humanos, en orden de entrada. Igual en todos los peers.
   buildRoster(players, seed) {
     const rnd = mulberry32(seed);
     const used = new Set();
@@ -69,13 +69,6 @@ export class Multiplayer {
       const spec = p.spec || {};
       let num = spec.number || 7; while (used.has(num)) num = 1 + Math.floor(rnd() * 99); used.add(num);
       return { name: p.name || `Jugador ${i + 1}`, isPlayer: p.id === localId, isHuman: true, netId: p.id, color: spec.color || LIVERY_COLORS[i], roofColor: spec.roofColor || spec.color, number: num, accessory: spec.accessory || 'none', stripes: !!spec.stripes, helmetColor: '#e2a33b', skill: 1, aggression: 0.5, seed: 1 + i };
-    });
-    const accessories = ['none', 'none', 'none', 'rack', 'lights', 'spoiler', 'antenna'];
-    const helmets = ['#d94a3a', '#3f6fb5', '#f0c541', '#f5f1e8', '#2b1d14', '#6f8f4b'];
-    DRIVER_NAMES.slice(0, 20 - players.length).forEach((d, i) => {
-      let num; do { num = 1 + Math.floor(rnd() * 99); } while (used.has(num)); used.add(num);
-      const color = LIVERY_COLORS[(i + 3) % LIVERY_COLORS.length];
-      roster.push({ name: d[0], isPlayer: false, isHuman: false, color, roofColor: rnd() < 0.4 ? LIVERY_COLORS[Math.floor(rnd() * LIVERY_COLORS.length)] : color, number: num, accessory: accessories[Math.floor(rnd() * accessories.length)], stripes: rnd() < 0.4, helmetColor: helmets[Math.floor(rnd() * helmets.length)], skill: d[1], aggression: d[2], seed: 100 + i });
     });
     return roster;
   }

@@ -296,7 +296,7 @@ export class Track {
     const lats = [-W, -hw, hw, W];
     const rows = this.closed ? n + 1 : n;
     const pos = new Float32Array(rows * 4 * 3), col = new Float32Array(rows * 4 * 3), uv = new Float32Array(rows * 4 * 2);
-    const shoulderCol = new THREE.Color(wet ? '#a88d5e' : '#d9b878'), gravelCol = new THREE.Color(wet ? '#8f7a55' : '#cdb27c');
+    const shoulderCol = new THREE.Color(wet ? '#7a6448' : '#bf9e72'), gravelCol = new THREE.Color(wet ? '#6a5540' : '#b08c62');
     const rnd = mulberry32(5);
     for (let r = 0; r < rows; r++) {
       const q = s[r % n];
@@ -306,7 +306,7 @@ export class Track {
         pos[vi * 3] = q.x + q.nx * lat; pos[vi * 3 + 1] = q.y + 0.05; pos[vi * 3 + 2] = q.z + q.nz * lat;
         uv[vi * 2] = lat / (2 * W) + 0.5; uv[vi * 2 + 1] = v;
         const c = (k === 0 || k === 3) ? shoulderCol : gravelCol;
-        const tint = 0.92 + 0.16 * this.noise.fbm(q.x / 25, q.z / 25, 2) + (rnd() - 0.5) * 0.04;
+        const tint = 0.86 + 0.34 * this.noise.fbm(q.x / 25, q.z / 25, 2) + 0.1 * this.noise.noise(q.x / 6, q.z / 6) + (rnd() - 0.5) * 0.05; // lodo: manchones grandes y charquitos
         col[vi * 3] = c.r * tint; col[vi * 3 + 1] = c.g * tint; col[vi * 3 + 2] = c.b * tint;
       }
     }
@@ -320,14 +320,15 @@ export class Track {
     geo.computeVertexNormals();
     // marcas de neumáticos (surcos que se acumulan) multiplicadas sobre el ripio
     this.marks = new TireMarks(this);
-    const mat = new THREE.MeshStandardMaterial({ map: makeGravelTexture(wet), vertexColors: true, roughness: wet ? 0.5 : 0.95, metalness: 0 });
-    if (typeof loadTrackTextures === 'function') loadTrackTextures(mat, wet);
+    const mudTex = makeMudTextures(wet);
+    const mat = new THREE.MeshStandardMaterial({ map: mudTex.map, roughnessMap: mudTex.roughness, vertexColors: true, roughness: wet ? 0.5 : 0.9, metalness: 0 });
+    if (typeof loadTrackTextures === 'function') loadTrackTextures(mat, wet, mudTex.canvas);
     const marks = this.marks, len = this.length;
     mat.onBeforeCompile = (sh) => {
       sh.uniforms.marksMap = { value: marks.texture }; sh.uniforms.marksScale = { value: 8 / len };
       sh.vertexShader = sh.vertexShader.replace('void main() {', 'varying vec2 vMarksUv;\nvoid main() {\n vMarksUv = uv;');
       sh.fragmentShader = sh.fragmentShader.replace('void main() {', 'uniform sampler2D marksMap; uniform float marksScale; varying vec2 vMarksUv;\nvoid main() {')
-        .replace('#include <map_fragment>', '#include <map_fragment>\n float mk = texture2D(marksMap, vec2(vMarksUv.x, vMarksUv.y * marksScale)).a; diffuseColor.rgb *= (1.0 - mk * 0.55);');
+        .replace('#include <map_fragment>', '#include <map_fragment>\n float mk = texture2D(marksMap, vec2(vMarksUv.x, vMarksUv.y * marksScale)).a; diffuseColor.rgb *= (1.0 - mk * 0.7);');
     };
     const mesh = new THREE.Mesh(geo, mat);
     mesh.receiveShadow = true;
@@ -346,7 +347,7 @@ export class Track {
       const lp = new Float32Array(rowsL * 2 * 3), lc = new Float32Array(rowsL * 2 * 3);
       for (let r = 0; r < rowsL; r++) {
         const q = s[r % n];
-        const worn = 0.72 + 0.28 * Math.max(0, Math.min(1, 0.5 + this.noise.noise(r / 9 + side * 40, 3.7))); // desgaste irregular
+        const worn = 0.5 + 0.5 * Math.max(0, Math.min(1, 0.5 + this.noise.noise(r / 9 + side * 40, 3.7))); // desgaste irregular, salpicada de barro
         for (let k = 0; k < 2; k++) {
           const lat = side * (hw - 0.05 + (k ? lineW : 0)), vi = r * 2 + k;
           lp[vi * 3] = q.x + q.nx * lat; lp[vi * 3 + 1] = q.y + 0.075; lp[vi * 3 + 2] = q.z + q.nz * lat;
@@ -384,43 +385,58 @@ export class TireMarks {
     const t = this.track;
     const u = (lateral / (2 * t.W) + 0.5) * this.w;
     const v = (((progress / t.length) % 1) + 1) % 1 * this.h;
-    this.ctx.fillStyle = `rgba(40,28,14,${(0.05 + strength * 0.12).toFixed(3)})`;
-    this.ctx.beginPath(); this.ctx.ellipse(u, v, 0.9 + strength * 0.8, 1.6, 0, 0, 7); this.ctx.fill();
+    this.ctx.fillStyle = `rgba(40,28,14,${(0.06 + strength * 0.14).toFixed(3)})`;
+    this.ctx.beginPath(); this.ctx.ellipse(u, v, 1.1 + strength * 0.9, 1.8, 0, 0, 7); this.ctx.fill();
     this.dirty = true;
   }
   update(dt) { this.t += dt; if (this.dirty && this.t > 0.4) { this.texture.needsUpdate = true; this.dirty = false; this.t = 0; } }
 }
 
-function makeGravelTexture(wet) {
-  const c = document.createElement('canvas'); c.width = 512; c.height = 1024;
-  const g = c.getContext('2d'); g.scale(2, 2);
-  g.fillStyle = wet ? '#8c7550' : '#c9ad78'; g.fillRect(0, 0, 256, 512);
+// Lodo procedural: manchones, huellas de ruedas, costras secas y charcos. Devuelve color + rugosidad (charcos y huellas brillan).
+// El lienzo cubre 16 m de ancho por 8 m de largo (u = ancho, v = a lo largo).
+function makeMudTextures(wet) {
+  const Wc = 1024, Hc = 512;
+  const c = document.createElement('canvas'); c.width = Wc; c.height = Hc;
+  const g = c.getContext('2d');
+  const r = document.createElement('canvas'); r.width = 256; r.height = 128;
+  const rg = r.getContext('2d'); const rs = 256 / Wc;
   const rnd = mulberry32(99);
-  for (const u of [0.39, 0.61]) {
-    const grad = g.createLinearGradient(u * 256 - 22, 0, u * 256 + 22, 0);
-    grad.addColorStop(0, 'rgba(120,90,50,0)'); grad.addColorStop(0.5, 'rgba(120,90,50,0.35)'); grad.addColorStop(1, 'rgba(120,90,50,0)');
-    g.fillStyle = grad; g.fillRect(u * 256 - 22, 0, 44, 512);
+  g.fillStyle = wet ? '#5a4632' : '#9a7a54'; g.fillRect(0, 0, Wc, Hc);
+  rg.fillStyle = wet ? '#9a9a9a' : '#d0d0d0'; rg.fillRect(0, 0, 256, 128);
+  const blob = (ctx, x, y, rx, ry, rot, style, sc = 1) => { ctx.fillStyle = style; ctx.beginPath(); ctx.ellipse(x * sc, y * sc, rx * sc, ry * sc, rot, 0, 7); ctx.fill(); };
+  // manchones oscuros grandes (barro más húmedo) y costras claras (barro seco)
+  for (let i = 0; i < 70; i++) { const x = rnd() * Wc, y = rnd() * Hc, rx = 40 + rnd() * 120, ry = 20 + rnd() * 60, rot = rnd() * 3; blob(g, x, y, rx, ry, rot, 'rgba(38,24,12,0.3)'); blob(rg, x, y, rx, ry, rot, 'rgba(80,80,80,0.25)', rs); }
+  for (let i = 0; i < 45; i++) { const x = rnd() * Wc, y = rnd() * Hc, rx = 30 + rnd() * 90, ry = 12 + rnd() * 40, rot = rnd() * 3; blob(g, x, y, rx, ry, rot, wet ? 'rgba(150,125,95,0.12)' : 'rgba(200,170,130,0.2)'); blob(rg, x, y, rx, ry, rot, 'rgba(240,240,240,0.35)', rs); }
+  // huellas de ruedas: bandas hundidas a lo largo (u constante, serpenteando), con un bordecito claro
+  const ruts = [0.33, 0.41, 0.59, 0.67, 0.5];
+  for (const u of ruts) {
+    for (const [ctx, sc, width, style] of [[g, 1, 30, 'rgba(30,18,8,0.42)'], [rg, rs, 30, 'rgba(60,60,60,0.6)']]) {
+      ctx.strokeStyle = style; ctx.lineWidth = width * sc; ctx.lineCap = 'round'; ctx.beginPath();
+      for (let y = -20; y <= Hc + 20; y += 16) { const x = (u * Wc + Math.sin(y / 70 + u * 20) * 14 + Math.sin(y / 23) * 5); if (y < 0) ctx.moveTo(x * sc, y * sc); else ctx.lineTo(x * sc, y * sc); }
+      ctx.stroke();
+    }
+    g.strokeStyle = wet ? 'rgba(120,98,70,0.16)' : 'rgba(170,140,100,0.22)'; g.lineWidth = 6; g.beginPath();
+    for (let y = -20; y <= Hc + 20; y += 16) { const x = u * Wc + 18 + Math.sin(y / 70 + u * 20) * 14 + Math.sin(y / 23) * 5; if (y < 0) g.moveTo(x, y); else g.lineTo(x, y); }
+    g.stroke();
   }
-  for (let i = 0; i < 4200; i++) {
-    const x = rnd() * 256, y = rnd() * 512, r = 0.5 + rnd() * 2.4;
-    const shade = (wet ? 95 : 140) + Math.floor(rnd() * 105);
-    const warm = rnd() < 0.7;
-    // sombrita de cada piedra (abajo a la derecha) y luego la piedra
-    g.fillStyle = 'rgba(60,40,20,0.35)'; g.beginPath(); g.ellipse(x + 0.6, y + 0.7, r, r * 0.7, rnd() * 3, 0, Math.PI * 2); g.fill();
-    g.fillStyle = `rgb(${shade + (warm ? 20 : -10)},${shade - 15},${shade - 60})`;
-    g.beginPath(); g.ellipse(x, y, r, r * (0.6 + rnd() * 0.6), rnd() * 3, 0, Math.PI * 2); g.fill();
+  // piedritas y terrones
+  for (let i = 0; i < 2600; i++) {
+    const x = rnd() * Wc, y = rnd() * Hc, rad = 0.8 + rnd() * 2.6, dark = rnd() < 0.55;
+    const shade = dark ? 30 + Math.floor(rnd() * 40) : 120 + Math.floor(rnd() * 80);
+    blob(g, x + 0.8, y + 0.9, rad, rad * 0.7, rnd() * 3, 'rgba(25,15,6,0.4)');
+    blob(g, x, y, rad, rad * (0.5 + rnd() * 0.6), rnd() * 3, `rgba(${shade + 18},${shade},${Math.max(0, shade - 35)},0.9)`);
   }
-  if (wet) {
-    g.globalAlpha = 0.35; g.fillStyle = '#5a6a7a';
-    for (let i = 0; i < 14; i++) { g.beginPath(); g.ellipse(rnd() * 256, rnd() * 512, 10 + rnd() * 30, 4 + rnd() * 8, rnd() * 3, 0, 7); g.fill(); }
-  } else {
-    g.globalAlpha = 0.18; g.fillStyle = '#fff2c8';
-    for (let i = 0; i < 60; i++) { g.beginPath(); g.ellipse(rnd() * 256, rnd() * 512, 8 + rnd() * 30, 2 + rnd() * 5, rnd() * 3, 0, 7); g.fill(); }
+  // charcos: oscuros, con reflejo del cielo, y muy lisos en el mapa de rugosidad
+  const puddles = wet ? 20 : 10;
+  for (let i = 0; i < puddles; i++) {
+    const x = rnd() * Wc, y = rnd() * Hc, rx = 24 + rnd() * 70, ry = 10 + rnd() * 26, rot = rnd() * 3;
+    blob(g, x, y, rx, ry, rot, 'rgba(24,18,12,0.7)'); blob(g, x - rx * 0.15, y - ry * 0.2, rx * 0.75, ry * 0.6, rot, 'rgba(120,135,155,0.5)');
+    blob(rg, x, y, rx, ry, rot, 'rgba(20,20,20,0.9)', rs);
   }
   const t = new THREE.CanvasTexture(c);
-  t.wrapS = THREE.ClampToEdgeWrapping; t.wrapT = THREE.RepeatWrapping;
-  t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
-  return t;
+  t.wrapS = THREE.ClampToEdgeWrapping; t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  const rt = new THREE.CanvasTexture(r); rt.wrapS = THREE.ClampToEdgeWrapping; rt.wrapT = THREE.RepeatWrapping;
+  return { map: t, roughness: rt, canvas: c };
 }
 
 function makeCheckerTexture() {
@@ -432,7 +448,18 @@ function makeCheckerTexture() {
 
 // Foto de grava con normales (Poly Haven, CC0). La cinta mide 16 m de ancho por 8 m de repetición: 2 baldosas a lo ancho.
 const _loader = new THREE.TextureLoader();
-function loadTrackTextures(mat, wet) {
-  _loader.load('assets/texturas/grava_color.jpg', (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 1); t.anisotropy = 8; t.colorSpace = THREE.SRGBColorSpace; mat.map = t; mat.color.set(wet ? '#9a8a70' : '#f4e2b8'); mat.needsUpdate = true; }, undefined, () => {});
-  _loader.load('assets/texturas/grava_normal.jpg', (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 1); t.anisotropy = 8; mat.normalMap = t; mat.normalScale.set(0.9, 0.9); mat.needsUpdate = true; }, undefined, () => {});
+function loadTrackTextures(mat, wet, mudCanvas) {
+  // la foto de grava (detalle fino) se multiplica sobre el lodo procedural (manchas, huellas, charcos)
+  _loader.load('assets/texturas/grava_color.jpg', (t) => {
+    const img = t.image; if (!img || !mudCanvas) return;
+    const c = document.createElement('canvas'); c.width = mudCanvas.width; c.height = mudCanvas.height;
+    const g = c.getContext('2d');
+    g.drawImage(mudCanvas, 0, 0);
+    g.globalCompositeOperation = 'multiply'; g.globalAlpha = 0.55;
+    const tile = c.height; for (let x = 0; x < c.width; x += tile) g.drawImage(img, x, 0, tile, tile);
+    g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+    const tex = new THREE.CanvasTexture(c); tex.wrapS = THREE.ClampToEdgeWrapping; tex.wrapT = THREE.RepeatWrapping; tex.anisotropy = 8; tex.colorSpace = THREE.SRGBColorSpace;
+    mat.map = tex; mat.color.set(wet ? '#d8ccb8' : '#fff0dc'); mat.needsUpdate = true;
+  }, undefined, () => {});
+  _loader.load('assets/texturas/grava_normal.jpg', (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 1); t.anisotropy = 8; mat.normalMap = t; mat.normalScale.set(0.7, 0.7); mat.needsUpdate = true; }, undefined, () => {});
 }

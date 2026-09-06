@@ -130,17 +130,38 @@ Siete fechas con premios en plata y puntos 25-20-17… para los 20:
 - **Repetición** (`js/replay.js`): poses de los 20 autos a 20 Hz y lista de golpes;
   reproducción interpolada con la cámara de TV (`js/camera.js`).
 
+## La pista de lodo
+
+La cinta se pinta con un lodo procedural (`makeMudTextures` en `js/track.js`): manchones húmedos oscuros,
+costras secas claras, cinco huellas de rueda serpenteantes, piedritas y charcos que reflejan el cielo. Va
+acompañado de un mapa de rugosidad (charcos y huellas brillan al sol) y, encima, la foto de grava multiplicada
+para el detalle fino. Los colores por vértice agregan manchones grandes por ruido. Las marcas de neumáticos
+oscurecen más y son más anchas. El polvo es marrón y los autos levantan terrones. Además, el barro se va
+pegando a la carrocería y los guardabarros (uniforme `uDirt` por auto, `setDirt` en `js/car.js`): más rápido
+con lluvia y fuera del ripio; la reparación en el taller lo limpia.
+
+## Cómo frena la IA
+
+La velocidad permitida se planifica integrando hacia atrás 200 m de pista con el círculo de fricción:
+en cada tramo solo queda para frenar lo que no se usa para doblar, así que en curvas que se cierran
+(Curvón, Tenaza) frenan antes. El agarre que estima cada piloto es `0.76 × agarre real × (0.9 + 0.12 × habilidad)`,
+descontando 1,5 % por cada m/s por encima de 12 m/s (a fondo, la cola tiene menos agarre lateral). La dificultad
+no infla esa estimación: la ventaja viene del "tune" real del auto (par, agarre y frenos), que la IA conoce.
+Fuera del ripio van despacio (9 m/s en la zanja) para poder salir, y un auto perdido o trabado más de
+5–6 s vuelve al borde de la pista. Se calibra con `herramientas/solo2.mjs` (un auto) y `herramientas/fuera.mjs`
+(20 autos: segundos fuera de pista por vuelta y por sector; `DIF=1.14 CIRCUITO=ovalo REVERSE=1 DIAG=1`).
+
 ## Multijugador
 
 Desde el menú, **Multijugador**: uno crea la sala y recibe un código de 4 letras; los demás
-entran con el código (hasta 8 personas; los lugares que sobran los corren rivales de IA).
+entran con el código (hasta 8 personas, solo humanos: en red no corren rivales de IA).
 El anfitrión elige la fecha y larga. Cada uno corre con su auto de "Pintura y número".
 
 Funciona entre navegadores por **WebRTC con PeerJS** (`js/net.js`): el servidor público
 de PeerJS solo presenta a los jugadores, después los datos viajan directo entre ellos, así
 que sirve desde GitHub Pages sin servidor propio. Protocolo (`js/multiplayer.js`):
 
-- El anfitrión simula los rivales de IA y su auto; cada invitado simula solo el suyo.
+- Cada uno simula solo su auto; el anfitrión además arbitra la largada y los resultados.
 - Estados a 20 Hz (posición, rumbo, velocidad, vuelta, progreso): los invitados le mandan el
   suyo al anfitrión y el anfitrión reparte el de todos. Los autos remotos se interpolan y
   extrapolan; son cuerpos "cinemáticos": te frenan al chocarlos pero no se mueven.

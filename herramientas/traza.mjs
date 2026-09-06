@@ -2,7 +2,7 @@
 import { Track } from '../js/track.js';
 import { createCar, stepCar } from '../js/physics.js';
 import { AIDriver, buildRacingLine } from '../js/ai.js';
-const track = new Track('polvaredas'); const line = buildRacingLine(track);
+const track = new Track(process.env.CIRCUITO || 'polvaredas', { reverse: process.env.REVERSE === '1' }); const line = buildRacingLine(track);
 const slot = track.gridSlot(0); const c = createCar(0, slot.x, slot.z, slot.heading); c.y = track.heightAt(c.x, c.z); c.trackIdx = slot.idx; c.frozen = false;
 const ai = new AIDriver(c, track, line, { skill: 0.9, aggression: 0.5, seed: 3, difficulty: 1 });
 const dt = 1 / 120; let t = 0, lap = 0, lastP = 0; const prof = new Array(track.n).fill(null);

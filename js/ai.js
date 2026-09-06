@@ -1,7 +1,7 @@
 // Pilotos rivales: línea de carrera, velocidad objetivo por curvatura, esquive, errores y recuperación.
 import { clamp, wrapAngle, lerp, sign, mulberry32 } from './util.js';
 import { GRAVITY, CAR, SURFACES } from './config.js';
-import { steerLimit } from './physics.js';
+import { steerLimit, resetCarAt } from './physics.js';
 
 // Línea de carrera aproximada (exterior-interior-exterior) por muestra.
 export function buildRacingLine(track) {
@@ -27,12 +27,16 @@ export class AIDriver {
     this.bias = (this.rnd() - 0.5) * 3; this.biasTarget = this.bias; this.latTarget = null;
     this.reaction = 0.15 + (1 - this.skill) * 0.7 + this.rnd() * 0.25;
     this.mistakeT = 4 + this.rnd() * 8; this.mistake = 0; this.mistakeSteer = 0;
-    this.stuckT = 0; this.recoverT = 0; this.recoverSteer = 0;
+    this.stuckT = 0; this.recoverT = 0; this.recoverSteer = 0; this.lostT = 0; this.slowT = 0; this.resets = 0;
     this.input = { steer: 0, throttle: 0, brake: 0, handbrake: false };
-    this.speedFactor = (0.91 + 0.09 * this.skill) * this.difficulty;
-    this.decel = 4.3 * (0.85 + 0.3 * this.skill) * this.difficulty;
-    const MUK = 0.72; // calibrado: con más, entran pasados y se van afuera
-    this.muKnown = SURFACES.gravel.grip * MUK * (0.9 + 0.12 * this.skill) * this.difficulty;
+    // La dificultad no infla la estimación: la ventaja real viene del "tune" del auto (más agarre, par y frenos),
+    // y la IA conoce ese agarre. Si la estimación crece más que el agarre real, entran pasados y se van afuera.
+    const tune = profile.tune || { grip: 1, brake: 1 };
+    this.speedFactor = (0.91 + 0.09 * this.skill) * (1 + Math.max(0, this.difficulty - 1) * (profile.sfk != null ? profile.sfk : 0.35));
+    this.decel = 4.3 * (0.85 + 0.3 * this.skill) * (tune.brake || 1);
+    const MUK = profile.muk || 0.76; // calibrado con herramientas/solo2.mjs y fuera.mjs
+    this.hs = profile.hs != null ? profile.hs : 0.015; // pérdida de agarre estimado en curvas rápidas (por m/s sobre 12)
+    this.muKnown = SURFACES.gravel.grip * MUK * (0.9 + 0.12 * this.skill) * (tune.grip || 1);
     this.throttleSmooth = 0; this.honk = 0;
   }
 
@@ -53,8 +57,18 @@ export class AIDriver {
     }
     if (this.mistake > 0) this.mistake -= dt;
 
-    // ---- recuperación (atascado o mirando al revés)
+    // ---- red de seguridad: perdido lejos del ripio o atascado mucho tiempo → vuelve al borde de la pista
     const sm = s[c.trackIdx];
+    const farOff = Math.abs(c.lateral) > t.W + 7;
+    if (Math.abs(speed) < 1.5) this.slowT += dt; else if (Math.abs(speed) > 5) this.slowT = Math.max(0, this.slowT - dt * 2);
+    if (farOff && Math.abs(speed) < 6) this.lostT += dt; else this.lostT = Math.max(0, this.lostT - dt);
+    if ((this.lostT > 5 || this.slowT > 6) && !c.finished && raceTime > greenTime + 6) {
+      const side = sign(c.lateral) || 1, q = s[t.wrap(c.trackIdx + 4)];
+      resetCarAt(c, q.x + q.nx * side * (t.hw - 1.4), q.z + q.nz * side * (t.hw - 1.4), q.heading);
+      c.y = t.heightAt(c.x, c.z); c.trackIdx = q.idx != null ? q.idx : c.trackIdx;
+      this.lostT = 0; this.slowT = 0; this.stuckT = 0; this.recoverT = 0; this.latTarget = null; this.resets++;
+    }
+    // ---- recuperación (atascado o mirando al revés)
     const headErr = wrapAngle(sm.heading - c.heading);
     if (Math.abs(speed) < 1.2 && !c.finished) this.stuckT += dt; else this.stuckT = 0;
     if (this.recoverT <= 0 && (this.stuckT > 1.6 || (Math.abs(headErr) > 2.2 && Math.abs(speed) < 6))) {
@@ -100,7 +114,7 @@ export class AIDriver {
       if (Math.abs(dprog) < 4.5 && Math.abs(dlat) < 3.2) { if (dlat > 0) leftBlocked = true; else rightBlocked = true; }
       // seguimiento en mi carril: mantener distancia según velocidad (modelo de tránsito)
       if (dprog > 0.5 && dprog < 32 && Math.abs(dlat) < 2.4) {
-        if (oSpeed < 3 && Math.abs(speed) > 3 && dprog > 2.5) {
+        if (oSpeed < 2.5 && dprog > 2.5) {
           // auto casi parado adelante: es un obstáculo, lo esquivo en vez de frenar detrás
           sideShift += -Math.sign(dlat || (this.rnd() < 0.5 ? 1 : -1)) * (2.8 - Math.min(Math.abs(dlat), 2.8)) * 1.3;
           if (dprog < 8) followCap = Math.min(followCap, 6 + dprog);
@@ -145,7 +159,7 @@ export class AIDriver {
     lat = this.latTarget;
     const tx = tgt.x + tgt.nx * lat, tz = tgt.z + tgt.nz * lat;
     let targetHeading = Math.atan2(tx - c.x, tz - c.z);
-    if (Math.abs(c.lateral) > t.W + 3) { targetHeading = sm.heading - Math.sign(c.lateral) * 0.45; } // afuera: paralelo al ripio, entrando de a poco
+    if (Math.abs(c.lateral) > t.W + 3 && !this.outsideWall) { targetHeading = sm.heading - Math.sign(c.lateral) * 0.45; } // afuera: paralelo al ripio, entrando de a poco (detrás del muro de gomas, sigue el punto objetivo)
     // dirección de la velocidad (permite contravolante en derrape)
     const vHead = Math.abs(speed) > 4 ? Math.atan2(c.vx, c.vz) : c.heading;
     const refHead = lerp(c.heading, vHead, 0.55);
@@ -162,22 +176,30 @@ export class AIDriver {
 
     // ---- velocidad permitida mirando adelante
     const g = GRAVITY, muK = this.muKnown * (t.gripScale || 1); // con lluvia saben que resbala
+    // Integración hacia atrás desde 200 m adelante: en cada tramo, la frenada disponible es lo que deja
+    // el círculo de fricción después de doblar (en una curva que se cierra casi no se puede frenar).
+    const STEP = 2, N = 100, ds = STEP * t.step;
     let allowed = 45;
-    let dist = 0;
-    for (let k = 0; k < 90; k += 2) {
+    for (let k = N; k >= 0; k -= STEP) {
       const q = s[t.wrap(c.trackIdx + k)];
       const curv = Math.abs(q.curvS) + 1e-4;
       let vc = Math.sqrt(muK * g / curv) * this.speedFactor;
+      vc *= clamp(1 - this.hs * (vc - 12), 0.75, 1);
       if (q.slope < -0.06) vc *= 0.92; // bajadas: cuidado
-      const v = Math.sqrt(vc * vc + 2 * this.decel * dist);
-      if (v < allowed) allowed = v;
-      dist += 2 * t.step;
+      const latUse = clamp(allowed * allowed * curv / (muK * g), 0, 1);
+      const aLong = this.decel * Math.sqrt(Math.max(0.12, 1 - latUse * latUse));
+      allowed = Math.min(vc, Math.sqrt(allowed * allowed + 2 * aLong * ds));
     }
     allowed = Math.min(allowed, 40 * this.difficulty, followCap);
     if (packAhead >= 2) allowed *= packAhead >= 4 ? 0.9 : 0.95; // en el pelotón, con cuidado
     if (!t.closed && c.trackIdx > n - 30) allowed = Math.min(allowed, 4 + (n - c.trackIdx) * 0.6);
     this.allowed = allowed;
-    if (c.surface === 'grass' || c.surface === 'ditch') allowed = Math.min(allowed, this.outsideWall ? 10 : 14);
+    if (c.surface === 'grass' || c.surface === 'ditch') {
+      // afuera hay poco agarre y la zanja empuja hacia su fondo: en curva hay que ir despacio para poder salir
+      const cOff = Math.abs(s[t.wrap(c.trackIdx + 8)].curvS);
+      const vOff = 0.6 * Math.sqrt(mu * g / Math.max(cOff, 1 / 400));
+      allowed = Math.min(allowed, this.outsideWall ? 10 : 14, vOff, c.surface === 'ditch' ? 9 : 14);
+    }
     if (barBrake > 0) allowed = Math.min(allowed, 8 - barBrake * 5);
     if (this.mistake > 0 && this.mistakeSteer > 0.3) allowed += 6; // se pasa de rosca
     let acc = (allowed - speed - 0.6) * 1.4; // margen: frena un poco antes

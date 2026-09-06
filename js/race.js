@@ -2,7 +2,7 @@
 // contrarreloj, grabación de repetición, surcos en el ripio y visuales.
 import * as THREE from 'three';
 import { createCar, stepCar, collideCars, collideBarrier, impactZone, applyDamage, resetCarAt } from './physics.js';
-import { createCarVisual, deformBody, detachParts, breakHeadlight, setHeadlights, setBrakeLights, createRivalStar } from './car.js';
+import { createCarVisual, deformBody, detachParts, breakHeadlight, setHeadlights, setBrakeLights, setDirt, createRivalStar } from './car.js';
 import { AIDriver, buildRacingLine } from './ai.js';
 import { CAR, SURFACES, RACE } from './config.js';
 import { clamp, formatTime, dampTo } from './util.js';
@@ -59,7 +59,7 @@ export class Race {
       this.scene.add(vis.root);
       setHeadlights(vis, this.world.night || this.wet || this.world.foggy);
       const car = { state, vis, name: r.name, color: r.color, isPlayer: r.isPlayer, spec: r, ai: null, dustAcc: 0, smokeAcc: 0, position: i + 1, prevPosition: i + 1, honkT: 0, gridSlot: i, lastLapProgress: 0, markAcc: 0, isRival: r.name === this.rivalName };
-      if (!r.isPlayer) { car.ai = new AIDriver(state, this.track, this.line, { skill: r.skill, aggression: r.aggression, seed: r.seed, difficulty: this.settings.difficulty }); const dd = this.settings.difficulty - 1; state.tune = { torque: 1 + dd * 0.9, grip: 1.02 + dd * 0.9, brake: 1 + dd * 0.5 }; }
+      if (!r.isPlayer) { const dd = this.settings.difficulty - 1; state.tune = { torque: 1 + dd * 0.9, grip: 1.02 + dd * 0.9, brake: 1 + dd * 0.5 }; car.ai = new AIDriver(state, this.track, this.line, { skill: r.skill, aggression: r.aggression, seed: r.seed, difficulty: this.settings.difficulty, tune: state.tune }); }
       else if (this.champ) { state.tune = this.champ.tune(); this.applyCarriedDamage(car, this.champ.damage); }
       if (r.isPlayer && (this.world.night || this.wet || this.world.foggy)) {
         for (const sx of [-0.48, 0.48]) {
@@ -379,6 +379,8 @@ export class Race {
       v.vis.rotation.x = dampTo(v.vis.rotation.x, pitch, 8, dt || 0.016); v.vis.rotation.z = dampTo(v.vis.rotation.z, roll, 8, dt || 0.016);
       v.vis.position.y = bump;
       setBrakeLights(v, s.brake > 0.2 || s.handbrake);
+      // el barro se va pegando a la carrocería (más rápido con lluvia y fuera del ripio); la reparación lo limpia
+      if (!s.airborne && Math.abs(s.speed) > 3) { c.dirt = Math.min(1, (c.dirt || 0) + dt * Math.abs(s.speed) / 25 * (s.surface === 'gravel' ? 0.045 : 0.09) * (mud ? 2.5 : 1)); setDirt(v, c.dirt); }
       for (const w of v.wheels) {
         w.spin.rotation.x = s.wheelAngle;
         if (w.steer) w.group.rotation.y = s.steer;
@@ -401,10 +403,10 @@ export class Race {
         const sp = Math.abs(s.speed);
         if (!s.airborne && sp > 2) {
           const slide = clamp(Math.abs(s.lateralV) / 4, 0, 1.5) + s.wheelspin;
-          const rate = surf.dust * (0.25 + slide) * clamp(sp / 18, 0, 1.4) * (mud ? 14 : 22);
+          const rate = surf.dust * (0.25 + slide) * clamp(sp / 18, 0, 1.4) * (mud ? 14 : 17);
           c.dustAcc += rate * dt;
           const fx = Math.sin(s.heading), fz = Math.cos(s.heading), lx = Math.cos(s.heading), lz = -Math.sin(s.heading);
-          const col = mud ? [0.36, 0.28, 0.18] : (s.surface === 'grass' || s.surface === 'ditch' ? [0.55, 0.6, 0.35] : [0.82, 0.7, 0.5]);
+          const col = mud ? [0.36, 0.28, 0.18] : (s.surface === 'grass' || s.surface === 'ditch' ? [0.55, 0.6, 0.35] : [0.52, 0.4, 0.26]);
           while (c.dustAcc >= 1) {
             c.dustAcc--;
             const side = Math.random() < 0.5 ? 1 : -1;
@@ -414,7 +416,7 @@ export class Race {
           }
         }
         if (s.landedImpact > 4) for (let k = 0; k < 10; k++) this.particles.emit(s.x, s.y + 0.2, s.z, (Math.random() - 0.5) * 5, Math.random() * 2, (Math.random() - 0.5) * 5, 1, 1.5, 0.82, 0.7, 0.5, 0.4, 2.5);
-        if (!s.airborne && s.surface === 'gravel' && sp > 8 && Math.random() < dt * (6 + sp * 0.4 + s.wheelspin * 20)) { const fx = Math.sin(s.heading), fz = Math.cos(s.heading), lx = Math.cos(s.heading), lz = -Math.sin(s.heading); const side = Math.random() < 0.5 ? 1 : -1; this.particles.emit(s.x - fx * 1.0 + lx * side * 0.7, s.y + 0.2, s.z - fz * 1.0 + lz * side * 0.7, -s.vx * 0.35 + (Math.random() - 0.5) * 4, 2.5 + Math.random() * 3, -s.vz * 0.35 + (Math.random() - 0.5) * 4, 0.07, 0.9, 0.42, 0.34, 0.24, 1, 0, -9.8); }
+        if (!s.airborne && s.surface === 'gravel' && sp > 8 && Math.random() < dt * (6 + sp * 0.4 + s.wheelspin * 20)) { const fx = Math.sin(s.heading), fz = Math.cos(s.heading), lx = Math.cos(s.heading), lz = -Math.sin(s.heading); const side = Math.random() < 0.5 ? 1 : -1; this.particles.emit(s.x - fx * 1.0 + lx * side * 0.7, s.y + 0.2, s.z - fz * 1.0 + lz * side * 0.7, -s.vx * 0.35 + (Math.random() - 0.5) * 4, 2.5 + Math.random() * 3, -s.vz * 0.35 + (Math.random() - 0.5) * 4, 0.08, 0.9, 0.3, 0.22, 0.13, 1, 0, -9.8); }
         if (s.throttle > 0.6 && Math.random() < dt * 8) { _v.copy(v.exhaustAnchor).applyMatrix4(v.root.matrixWorld); this.particles.emit(_v.x, _v.y, _v.z, -s.vx * 0.3, 0.6, -s.vz * 0.3, 0.3, 0.5, 0.5, 0.5, 0.5, 0.3, 1.5); }
         if (s.throttle < 0.1 && s.rpm > 4200 && Math.random() < dt * 3) { _v.copy(v.exhaustAnchor).applyMatrix4(v.root.matrixWorld); for (let k = 0; k < 3; k++) this.particles.emit(_v.x, _v.y, _v.z, -s.vx * 0.5 + (Math.random() - 0.5), 0.3, -s.vz * 0.5 + (Math.random() - 0.5), 0.22, 0.12, 1, 0.6, 0.15, 0.95, 0); }
         if (c.remote && s.netDamage > 0.5 && Math.random() < dt * 4) { _v.copy(v.smokeAnchor).applyMatrix4(v.root.matrixWorld); this.particles.emit(_v.x, _v.y, _v.z, 0, 1, 0, 0.6, 1.5, 0.4, 0.4, 0.42, 0.5, 2); }

@@ -125,13 +125,27 @@ export function createRivalStar() {
 function box(w, h, d, mat) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.castShadow = true; return m; }
 
 // spec: { color, roofColor, number, accessory, stripes, helmetColor, seed }
+// Barro sobre la carrocería: oscurece la parte baja con manchas; uDirt 0..1 por auto (compartido por carrocería y guardabarros).
+function dirtify(mat, dirt) {
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uDirt = dirt;
+    sh.vertexShader = sh.vertexShader.replace('void main() {', 'varying vec3 vDirtPos;\nvoid main() {\n vDirtPos = position;');
+    sh.fragmentShader = sh.fragmentShader.replace('void main() {', 'uniform float uDirt; varying vec3 vDirtPos;\nfloat dirtHash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\nvoid main() {')
+      .replace('#include <color_fragment>', '#include <color_fragment>\n { float n = dirtHash(floor(vDirtPos.xz * 9.0)) * 0.5 + dirtHash(floor(vDirtPos.xz * 23.0 + vDirtPos.y * 7.0)) * 0.5; float m = smoothstep(1.05, 0.2, vDirtPos.y) * uDirt; m = clamp(m * (0.55 + n * 0.9), 0.0, 0.85); diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.33, 0.24, 0.15), m); }');
+  };
+  mat.customProgramCacheKey = () => 'dirt';
+  return mat;
+}
+export function setDirt(cv, v) { cv.dirt.value = v; }
+
 export function createCarVisual(spec) {
   const rnd = mulberry32(spec.seed || 1);
   const root = new THREE.Group();
   const vis = new THREE.Group(); // subgrupo que inclinamos (suspensión)
   vis.position.z = 0.12;
   root.add(vis);
-  const bodyMat = toonMat(spec.color, { vertexColors: true });
+  const dirt = { value: 0 };
+  const bodyMat = dirtify(toonMat(spec.color, { vertexColors: true }), dirt);
   const geo = bodyGeometry();
   const body = new THREE.Mesh(geo, bodyMat);
   body.castShadow = true;
@@ -198,7 +212,7 @@ export function createCarVisual(spec) {
   const wheelRim = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.018, 6, 14), darkMat); wheelRim.position.set(0.3, 1.02, 0.28); wheelRim.rotation.x = 0.4; vis.add(wheelRim);
 
   // guardabarros abultados alrededor de las ruedas (color carrocería)
-  const fenderMat = toonMat(spec.color);
+  const fenderMat = dirtify(toonMat(spec.color), dirt);
   for (const [fx, fz] of [[0.7, 1.0], [-0.7, 1.0], [0.7, -1.0], [-0.7, -1.0]]) {
     const f = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), fenderMat); f.scale.set(0.16, 0.36, 0.58); f.position.set(fx, 0.66, fz); f.castShadow = true; vis.add(f);
     const fo = new THREE.Mesh(f.geometry, outline); fo.position.copy(f.position); fo.scale.copy(f.scale); vis.add(fo);
@@ -292,7 +306,7 @@ export function createCarVisual(spec) {
   }
 
   return {
-    root, vis, body, bodyMat, geo, orig, origCol, parts, headlights, taillights, wheels, spec, shadowBlob,
+    root, vis, body, bodyMat, geo, orig, origCol, parts, headlights, taillights, wheels, spec, shadowBlob, dirt,
     colorAttr: geo.attributes.color, smokeAnchor: new THREE.Vector3(0, 1.1, -1.35), exhaustAnchor: new THREE.Vector3(-0.42, 0.38, -1.88), braking: false,
     deformTotal: 0, wobble: 0,
   };
@@ -364,6 +378,7 @@ export function restoreCar(cv) {
   cv.deformTotal = 0;
   for (const p of cv.parts) if (!p.attached) { p.attached = true; cv.vis.add(p.mesh); }
   for (const hl of cv.headlights) hl.material = lightOn;
+  cv.dirt.value = 0;
 }
 
 export function setBrakeLights(cv, on) {
