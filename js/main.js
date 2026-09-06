@@ -171,8 +171,17 @@ function showWorkshop() {
 }
 
 // ---------- Multijugador ----------
+// Cambios de nombre, número o pintura: se guardan, pasan al campeonato y al auto del menú
+function applyPlayerSpec() {
+  saveSettings();
+  if (app.champ) { const me = app.champ.roster[0]; Object.assign(me, { name: app.playerSpec.name, color: app.playerSpec.color, roofColor: app.playerSpec.roofColor, accessory: app.playerSpec.accessory, stripes: app.playerSpec.stripes, number: app.playerSpec.number }); }
+  clearTimeout(app.rebuildT); app.rebuildT = setTimeout(() => showcase(), 250);
+}
+const CODE_RE = /^[A-Z0-9]{3,10}$/;
+function readCode(id) { const v = $(id).value.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''); $(id).value = v; return v; }
 function showMp() {
   const sel = $('mp-round'); if (!sel.options.length) ROUNDS.forEach((r, i) => { if (r.mode !== 'timetrial') { const o = document.createElement('option'); o.value = i; o.textContent = `${r.name} · ${r.laps} vueltas`; sel.appendChild(o); } });
+  app.ui.initPilotForm({ name: 'mp-name', number: 'mp-number', color: 'mp-color-swatches', roof: 'mp-roof-swatches', stripes: 'mp-stripes' }, app.playerSpec, LIVERY_COLORS, () => { applyPlayerSpec(); app.mp.updateSelf(app.playerSpec.name, app.playerSpec); renderLobby(); });
   app.ui.showScreen('mp'); app.state = 'menu'; renderLobby();
 }
 function renderLobby() {
@@ -181,7 +190,8 @@ function renderLobby() {
   $('mp-setup').classList.toggle('hidden', inRoom);
   $('mp-room').classList.toggle('hidden', !inRoom);
   $('mp-codebig').textContent = mp.net.code || '';
-  $('mp-players').innerHTML = mp.players.map(p => `<div class="order-row${p.local ? ' me' : ''}"><span class="chip" style="background:${(p.spec || {}).color || '#888'}"></span><span>${p.name}${p.id === 'host' ? ' (anfitrión)' : ''}</span></div>`).join('') || '<i>Nadie todavía</i>';
+  const esc = (t) => String(t).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  $('mp-players').innerHTML = mp.players.map(p => { const sp = p.spec || {}; return `<div class="order-row${p.local ? ' me' : ''}"><span class="chip" style="background:${sp.color || '#888'}"></span><span class="p">#${sp.number || '?'}</span><span>${esc(p.name)}${p.id === 'host' ? ' (anfitrión)' : ''}${p.local ? ' (vos)' : ''}</span></div>`; }).join('') || '<i>Nadie todavía</i>';
   $('mp-round').disabled = !host; $('mp-round').value = String(mp.roundIdx || 0);
   $('btn-mp-start').classList.toggle('hidden', !host);
   $('mp-hostnote').classList.toggle('hidden', host);
@@ -317,7 +327,7 @@ function bindUI() {
   document.addEventListener('pointerdown', gesture, { once: true }); document.addEventListener('keydown', gesture, { once: true });
   $('btn-continue').onclick = () => { showChampionship(); };
   $('btn-new').onclick = () => { if (app.champ && !confirm('¿Empezar un campeonato nuevo? Se borra el actual.')) return; Championship.clear(); app.champ = new Championship(makeRoster(app.playerSpec)); app.champ.save(); showChampionship(); showcase(); };
-  $('btn-garage').onclick = () => { ui.initGarage(app.playerSpec, LIVERY_COLORS, () => { saveSettings(); clearTimeout(app.rebuildT); app.rebuildT = setTimeout(() => { if (app.champ) { const me = app.champ.roster[0]; Object.assign(me, { color: app.playerSpec.color, roofColor: app.playerSpec.roofColor, accessory: app.playerSpec.accessory, stripes: app.playerSpec.stripes, number: app.playerSpec.number }); } showcase(); }, 250); }); ui.showScreen('garage'); app.orbitCar = true; };
+  $('btn-garage').onclick = () => { ui.initGarage(app.playerSpec, LIVERY_COLORS, () => applyPlayerSpec()); ui.showScreen('garage'); app.orbitCar = true; };
   $('btn-garage-back').onclick = () => {
     app.orbitCar = false;
     saveSettings();
@@ -343,8 +353,8 @@ function bindUI() {
   $('btn-results-ok').onclick = () => { showcase(); if (app.mpActive) { app.mpActive = false; app.quick = false; app.mp.race = null; app.mp.active = false; showMp(); } else if (app.quick) { app.quick = false; app.ui.showScreen('menu'); app.state = 'menu'; } else showChampionship(); };
   $('btn-mp').onclick = () => showMp();
   $('btn-mp-back').onclick = () => { app.mp.leave(); app.ui.showScreen('menu'); };
-  $('btn-mp-create').onclick = () => { app.audio.init(); app.mp.createRoom(app.playerSpec.name, app.playerSpec, () => renderLobby()); renderLobby(); };
-  $('btn-mp-join').onclick = () => { app.audio.init(); const code = $('mp-code').value.trim().toUpperCase(); if (code.length !== 4) { app.mp.status = 'El código tiene 4 letras.'; renderLobby(); return; } app.mp.joinRoom(code, app.playerSpec.name, app.playerSpec, () => renderLobby()); renderLobby(); };
+  $('btn-mp-create').onclick = () => { app.audio.init(); const custom = readCode('mp-newcode'); if (custom && !CODE_RE.test(custom)) { app.mp.status = 'El código: de 3 a 10 letras o números, sin espacios.'; renderLobby(); return; } app.mp.createRoom(app.playerSpec.name, app.playerSpec, () => renderLobby(), custom || null); renderLobby(); };
+  $('btn-mp-join').onclick = () => { app.audio.init(); const code = readCode('mp-code'); if (!CODE_RE.test(code)) { app.mp.status = 'Escribí el código de la sala (de 3 a 10 letras o números).'; renderLobby(); return; } app.mp.joinRoom(code, app.playerSpec.name, app.playerSpec, () => renderLobby()); renderLobby(); };
   $('mp-round').onchange = (e) => app.mp.setRound(parseInt(e.target.value));
   $('btn-mp-start').onclick = () => { if (app.mp.players.length < 1) return; app.mp.hostStart(); };
   $('btn-quick').onclick = () => startRace(true);

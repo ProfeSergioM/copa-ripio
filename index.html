@@ -200,11 +200,24 @@
   <div class="panel mp-panel">
     <h2>Multijugador</h2>
     <p id="mp-status" class="mp-status"></p>
+    <div id="mp-pilot" class="mp-pilot">
+      <div class="mp-pilot-title">Tu piloto y tu auto</div>
+      <label>Nombre <input id="mp-name" maxlength="18" value="Vos"></label>
+      <label>Número <input id="mp-number" type="number" min="1" max="99" value="7" style="width:80px"></label>
+      <div class="row"><span>Color</span><div id="mp-color-swatches" class="swatches"></div></div>
+      <div class="row"><span>Techo</span><div id="mp-roof-swatches" class="swatches"></div></div>
+      <div class="row"><span>Franjas</span><input id="mp-stripes" type="checkbox"></div>
+    </div>
     <div id="mp-setup">
-      <div class="buttons"><button id="btn-mp-create" class="btn primary big">Crear sala</button></div>
-      <label>Código de la sala <input id="mp-code" maxlength="4" placeholder="ABCD" style="width:110px;text-transform:uppercase;font-size:22px;letter-spacing:4px"></label>
-      <div class="buttons"><button id="btn-mp-join" class="btn">Unirse</button></div>
-      <p class="mp-note">Hasta 8 personas, solo humanos: nada de rivales de IA. Cada uno usa su auto de "Pintura y número". Funciona entre navegadores por WebRTC: cualquiera crea la sala, los demás entran con el código de 4 letras.</p>
+      <div class="mp-create">
+        <label>Código a elección <input id="mp-newcode" maxlength="10" placeholder="al azar" style="width:150px;text-transform:uppercase;letter-spacing:2px"></label>
+        <div class="buttons"><button id="btn-mp-create" class="btn primary big">Crear sala</button></div>
+      </div>
+      <div class="mp-join">
+        <label>Código de la sala <input id="mp-code" maxlength="10" placeholder="ABCD" style="width:150px;text-transform:uppercase;font-size:20px;letter-spacing:3px"></label>
+        <div class="buttons"><button id="btn-mp-join" class="btn">Unirse</button></div>
+      </div>
+      <p class="mp-note">Hasta 8 personas, solo humanos: nada de rivales de IA. Funciona entre navegadores por WebRTC: cualquiera crea la sala (con el código que quiera, o uno al azar de 4 letras) y los demás entran con ese código.</p>
     </div>
     <div id="mp-room" class="hidden">
       <div class="mp-codebox">Sala <b id="mp-codebig"></b></div>

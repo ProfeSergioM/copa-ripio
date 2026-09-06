@@ -130,6 +130,13 @@ Siete fechas con premios en plata y puntos 25-20-17… para los 20:
 - **Repetición** (`js/replay.js`): poses de los 20 autos a 20 Hz y lista de golpes;
   reproducción interpolada con la cámara de TV (`js/camera.js`).
 
+## El alambrado
+
+Un cerco rural de postes de madera con tres hilos de alambre rodea la pista por dentro y por fuera, a 10 m
+de la banquina (`FENCE_D` en `js/track.js`, un poste por metro, tipo `fence`). Frena a cualquiera que se
+vaya derecho al campo; se comprueba con `node herramientas/cerco.mjs`. Donde el circuito pasa cerca de sí mismo
+el cerco se corta y lo cubre el del otro tramo. La tribuna y los árboles quedan del otro lado del alambre.
+
 ## La pista de lodo
 
 La cinta se pinta con un lodo procedural (`makeMudTextures` en `js/track.js`): manchones húmedos oscuros,
@@ -153,9 +160,11 @@ Fuera del ripio van despacio (9 m/s en la zanja) para poder salir, y un auto per
 
 ## Multijugador
 
-Desde el menú, **Multijugador**: uno crea la sala y recibe un código de 4 letras; los demás
+Desde el menú, **Multijugador**: uno crea la sala con el código que quiera (3 a 10 letras o números)
+o recibe uno de 4 letras al azar; los demás
 entran con el código (hasta 8 personas, solo humanos: en red no corren rivales de IA).
-El anfitrión elige la fecha y larga. Cada uno corre con su auto de "Pintura y número".
+El anfitrión elige la fecha y larga. En la misma pantalla cada uno cambia nombre, número, colores
+y franjas; el cambio se ve al instante en la lista de la sala de todos.
 
 Funciona entre navegadores por **WebRTC con PeerJS** (`js/net.js`): el servidor público
 de PeerJS solo presenta a los jugadores, después los datos viajan directo entre ellos, así

@@ -14,6 +14,7 @@ export class Multiplayer {
     const n = this.net;
     n.on('join', (_, from) => { /* espera el hello con nombre y auto */ });
     n.on('hello', (m, from) => { if (this.net.role !== 'host') return; if (this.players.length >= 8) { n.send(from, { t: 'full' }); return; } this.players.push({ id: from, name: m.name, spec: m.spec, local: false }); n.send(from, { t: 'welcome', id: from }); this.broadcastLobby(); });
+    n.on('update', (m, from) => { if (this.net.role !== 'host') return; const p = this.players.find(x => x.id === from); if (p) { p.name = m.name; p.spec = m.spec; this.broadcastLobby(); } });
     n.on('leave', (_, from) => { this.players = this.players.filter(p => p.id !== from); this.broadcastLobby(); if (this.race) this.dropCar(from); });
     n.on('lobby', (m) => { if (this.net.role === 'guest') { this.players = m.players.map(p => ({ ...p, local: p.id === this.net.myId })); this.roundIdx = m.roundIdx; this.onLobby && this.onLobby(); } });
     n.on('welcome', (m) => { this.status = 'Conectado. Esperando que el anfitrión largue…'; this.onLobby && this.onLobby(); });
@@ -28,15 +29,28 @@ export class Multiplayer {
   }
 
   // ---------- sala ----------
-  createRoom(name, spec, cb) {
-    const code = randomCode();
-    this.players = [{ id: 'host', name, spec, local: true }]; this.roundIdx = 0;
+  // custom: código elegido por el anfitrión (letras y números); si no, 4 letras al azar
+  createRoom(name, spec, cb, custom) {
+    const code = custom || randomCode();
+    this.players = [{ id: 'host', name, spec: { ...spec }, local: true }]; this.roundIdx = 0;
     this.status = 'Creando sala…';
-    this.net.host(code, () => { this.status = `Sala ${code}. Pasá el código a tus amigos.`; cb && cb(null, code); this.onLobby && this.onLobby(); }, (e) => { this.status = 'No se pudo crear la sala: ' + (e.type || e.message || e); cb && cb(e); this.onLobby && this.onLobby(); });
+    this.net.host(code, () => { this.status = `Sala ${code}. Pasá el código a tus amigos.`; cb && cb(null, code); this.onLobby && this.onLobby(); }, (e) => {
+      this.status = e && e.type === 'unavailable-id' ? `El código ${code} ya está en uso. Elegí otro.` : 'No se pudo crear la sala: ' + (e.type || e.message || e);
+      this.net.close(); this.players = []; cb && cb(e); this.onLobby && this.onLobby();
+    });
   }
   joinRoom(code, name, spec, cb) {
     this.status = 'Buscando la sala ' + code + '…';
-    this.net.join(code, () => { this.net.sendHost({ t: 'hello', name, spec }); cb && cb(null); }, (e) => { this.status = 'No se pudo entrar: ' + (e.type || e.message || e); cb && cb(e); this.onLobby && this.onLobby(); });
+    this.net.join(code, () => { this.net.sendHost({ t: 'hello', name, spec: { ...spec } }); cb && cb(null); }, (e) => {
+      this.status = e && e.type === 'peer-unavailable' ? `No hay ninguna sala ${code}.` : 'No se pudo entrar: ' + (e.type || e.message || e);
+      this.net.close(); this.players = []; cb && cb(e); this.onLobby && this.onLobby();
+    });
+  }
+  // el jugador cambió nombre, número o pintura desde el lobby
+  updateSelf(name, spec) {
+    if (!this.net.role) return;
+    const me = this.players.find(p => p.local); if (me) { me.name = name; me.spec = { ...spec }; }
+    if (this.net.role === 'host') this.broadcastLobby(); else { this.net.sendHost({ t: 'update', name, spec: { ...spec } }); this.onLobby && this.onLobby(); }
   }
   broadcastLobby() { if (this.net.role !== 'host') return; this.net.broadcast({ t: 'lobby', players: this.players.map(p => ({ id: p.id, name: p.name, spec: p.spec })), roundIdx: this.roundIdx }); this.onLobby && this.onLobby(); }
   setRound(i) { this.roundIdx = i; this.broadcastLobby(); }

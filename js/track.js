@@ -248,13 +248,27 @@ export class Track {
       const c = s[i].curvS;
       if (Math.abs(c) > 1 / 48 && i - lastTire >= 1.3) {
         const side = -Math.sign(c), lat = side * (W + 6.5); // detrás de la zanja: hay escapatoria antes del muro
-        this.barriers.push({ x: s[i].x + s[i].nx * lat, z: s[i].z + s[i].nz * lat, r: 0.62, type: 'tires', idx: i, paint: (Math.floor(i / 2.6) % 2) });
+        this.barriers.push({ x: s[i].x + s[i].nx * lat, z: s[i].z + s[i].nz * lat, r: 0.62, type: 'tires', idx: i, lat, paint: (Math.floor(i / 2.6) % 2) });
         lastTire = i;
       }
       if (Math.abs(c) > 1 / 30 && i - lastBale >= 1.7) {
         const side = Math.sign(c), lat = side * (W + 1.1);
-        this.barriers.push({ x: s[i].x + s[i].nx * lat, z: s[i].z + s[i].nz * lat, r: 0.75, type: 'bale', idx: i, rot: rnd() * Math.PI });
+        this.barriers.push({ x: s[i].x + s[i].nx * lat, z: s[i].z + s[i].nz * lat, r: 0.75, type: 'bale', idx: i, lat, rot: rnd() * Math.PI });
         lastBale = i;
+      }
+    }
+    // alambrado perimetral: postes cada metro a FENCE_D del centro, por dentro y por fuera, para que nadie se vaya al infinito.
+    // Donde el circuito pasa cerca de sí mismo (infield angosto) el cerco se corta: lo cubre el del otro tramo.
+    const FENCE_D = W + 10;
+    this.fenceD = FENCE_D;
+    for (const side of [-1, 1]) {
+      let skip = false;
+      for (let i = 0; i < n; i++) {
+        const lat = side * FENCE_D;
+        const x = s[i].x + s[i].nx * lat, z = s[i].z + s[i].nz * lat;
+        if (i % 4 === 0) skip = this.nearest(x, z).dist < FENCE_D - 1.5; // otro tramo del circuito pasa más cerca: ahí va su cerco
+        if (skip) continue;
+        this.barriers.push({ x, z, r: 0.32, type: 'fence', idx: i, lat, side, lean: (rnd() - 0.5) * 0.12 });
       }
     }
     this.stakes = [];

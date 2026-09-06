@@ -147,7 +147,7 @@ export class AIDriver {
       const bl = bx * fx + bz * fz, bs = bx * lx + bz * lz;
       if (bl < -1 || bl > 12) continue;
       // si voy bien por el ripio, lo que está fuera de la cinta no me preocupa (fardos y postes del borde)
-      if (onTrack && t.nearest(b.x, b.z, c.trackIdx).dist > t.hw + 0.3) continue;
+      if (onTrack && (b.lat != null ? Math.abs(b.lat) : t.nearest(b.x, b.z, c.trackIdx).dist) > t.hw + 0.3) continue;
       const corridor = 1.1 + b.r;
       if (Math.abs(bs) < corridor) { sideShift += -Math.sign(bs || 1) * (corridor - Math.abs(bs)) * 1.6; if (bl < 5) barBrake = Math.max(barBrake, 1 - bl / 5); }
     }

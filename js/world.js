@@ -191,6 +191,30 @@ export class World {
     const tipMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.07, 0.07, 0.2, 6), toonMat('#d94a3a'), t.stakes.length);
     t.stakes.forEach((s, i) => { M.identity().setPosition(s.x, s.y + 0.5, s.z); stakeMesh.setMatrixAt(i, M); M.identity().setPosition(s.x, s.y + 1.0, s.z); tipMesh.setMatrixAt(i, M); });
     this.add(stakeMesh); this.add(tipMesh);
+    this.buildFence();
+  }
+
+  // Alambrado rural: postes de madera con tres hilos de alambre, siguiendo los postes del cerco de la pista
+  buildFence() {
+    const t = this.track, M = new THREE.Matrix4(), E = new THREE.Euler();
+    const posts = t.barriers.filter(b => b.type === 'fence');
+    if (!posts.length) return;
+    const H = 1.35;
+    const postGeo = new THREE.CylinderGeometry(0.09, 0.12, H, 6); postGeo.translate(0, H / 2, 0);
+    const postMesh = new THREE.InstancedMesh(postGeo, toonMat('#6b4a2e'), posts.length); postMesh.castShadow = true; postMesh.receiveShadow = true;
+    const ys = new Map();
+    posts.forEach((b, i) => { const y = t.heightAt(b.x, b.z) - 0.05; ys.set(b, y); E.set(b.lean, b.idx * 0.9, b.lean * 0.7); M.makeRotationFromEuler(E).setPosition(b.x, y, b.z); postMesh.setMatrixAt(i, M); });
+    this.add(postMesh);
+    // hilos: entre postes consecutivos del mismo lado (índices seguidos; en los cortes no hay hilo)
+    const wires = [];
+    for (const side of [-1, 1]) {
+      const row = posts.filter(b => b.side === side).sort((a, b) => a.idx - b.idx);
+      const link = (a, b) => { for (const h of [0.45, 0.85, 1.22]) wires.push(a.x, ys.get(a) + h, a.z, b.x, ys.get(b) + h, b.z); };
+      for (let i = 0; i + 1 < row.length; i++) if (row[i + 1].idx - row[i].idx <= 2) link(row[i], row[i + 1]);
+      if (t.closed && row.length > 2 && row[0].idx <= 1 && row[row.length - 1].idx >= t.n - 2) link(row[row.length - 1], row[0]);
+    }
+    const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wires, 3));
+    this.add(new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x3a3430 })));
   }
 
   // ---------- Árboles y álamos ----------
@@ -210,7 +234,7 @@ export class World {
     for (let i = 0; i < density; i++) {
       const x = b.minX - 140 + rnd() * (b.maxX - b.minX + 280), z = b.minZ - 140 + rnd() * (b.maxZ - b.minZ + 280);
       const q = t.nearest(x, z);
-      if (q.dist < t.W + 9) continue;
+      if (q.dist < t.W + 11) continue; // los árboles quedan del otro lado del alambrado
       const h = t.heightAt(x, z);
       if (h > 40) continue;
       if (this.reservedHit(x, z)) continue;
@@ -260,7 +284,7 @@ export class World {
   buildGrandstand() {
     const t = this.track, rnd = mulberry32(12);
     const s = t.sampleAtFrac(t.def.scenery.grandstand);
-    const lat = -(t.W + 10);
+    const lat = -(t.W + 11.5); // detrás del alambrado
     const gx = s.x + s.nx * lat, gz = s.z + s.nz * lat;
     const g = new THREE.Group();
     g.position.set(gx, t.heightAt(gx, gz) - 0.2, gz);

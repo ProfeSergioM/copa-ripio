@@ -211,6 +211,10 @@ export class UI {
 
   // ---------- Taller estético ----------
   initGarage(spec, colors, onChange) {
+    this.initPilotForm({ name: 'in-name', number: 'in-number', color: 'color-swatches', roof: 'roof-swatches', accessory: 'in-accessory', stripes: 'in-stripes' }, spec, colors, onChange);
+  }
+  // Mismo formulario (nombre, número, colores, franjas) en el garaje y en el lobby multijugador
+  initPilotForm(ids, spec, colors, onChange) {
     const mk = (containerId, key) => {
       const c = $(containerId); c.innerHTML = '';
       for (const col of colors) {
@@ -219,11 +223,11 @@ export class UI {
         c.appendChild(s);
       }
     };
-    mk('color-swatches', 'color'); mk('roof-swatches', 'roofColor');
-    $('in-name').value = spec.name; $('in-number').value = spec.number; $('in-accessory').value = spec.accessory; $('in-stripes').checked = !!spec.stripes;
-    $('in-name').oninput = (e) => { spec.name = e.target.value.trim() || 'Vos'; onChange(); };
-    $('in-number').onchange = (e) => { spec.number = clamp(parseInt(e.target.value) || 7, 1, 99); e.target.value = spec.number; onChange(); };
-    $('in-accessory').onchange = (e) => { spec.accessory = e.target.value; onChange(); };
-    $('in-stripes').onchange = (e) => { spec.stripes = e.target.checked; onChange(); };
+    mk(ids.color, 'color'); mk(ids.roof, 'roofColor');
+    $(ids.name).value = spec.name; $(ids.number).value = spec.number; $(ids.stripes).checked = !!spec.stripes;
+    $(ids.name).oninput = (e) => { spec.name = e.target.value.trim() || 'Vos'; onChange(); };
+    $(ids.number).onchange = (e) => { spec.number = clamp(parseInt(e.target.value) || 7, 1, 99); e.target.value = spec.number; onChange(); };
+    $(ids.stripes).onchange = (e) => { spec.stripes = e.target.checked; onChange(); };
+    if (ids.accessory) { $(ids.accessory).value = spec.accessory; $(ids.accessory).onchange = (e) => { spec.accessory = e.target.value; onChange(); }; }
   }
 }
