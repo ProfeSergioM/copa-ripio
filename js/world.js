@@ -47,7 +47,7 @@ export class World {
       ['Cámaras', () => this.buildTvSpots()],
       ['Arboleda', () => this.buildTrees()],
       ['Detalles', () => { this.buildMarshals(); this.buildLamps(); this.buildBirds(); this.buildGantry(); }],
-      ['Ambiente', () => { this.buildCountryside(); this.buildAtmosphere(); }],
+      ['Ambiente', () => { this.buildCountryside(); if (ATMOSFERA) this.buildAtmosphere(); }],
     ];
     for (let i = 0; i < steps.length; i++) {
       progress && progress(i / steps.length, steps[i][0]);
@@ -573,6 +573,8 @@ export class World {
 }
 const M4 = new THREE.Matrix4();
 
+// Efectos de atmósfera (bruma baja, motas a contraluz, humo de la parrilla): apagados por rendimiento.
+const ATMOSFERA = false;
 // Bruma baja según la hora (0 = nada)
 const MIST = { morning: 0.5, fog: 0.85, dusk: 0.4, storm: 0.35, sunset: 0.3, noon: 0.08 };
 
@@ -682,7 +684,7 @@ World.prototype.updateAtmosphere = function (dt, fx, fz, particles, camY) {
       this.motes.material.opacity = p.night ? 0 : 0.5;
     }
   }
-  if (particles && this.asado && Math.random() < dt * 10) particles.emit(this.asado.x + (Math.random() - 0.5) * 0.8, this.asado.y, this.asado.z + (Math.random() - 0.5) * 0.4, this.wind.x * 0.25 + (Math.random() - 0.5) * 0.3, 0.9 + Math.random() * 0.5, this.wind.z * 0.25 + (Math.random() - 0.5) * 0.3, 0.7, 4.5, 0.62, 0.6, 0.58, 0.28, 1.5, 0.9);
+  if (ATMOSFERA && particles && this.asado && Math.random() < dt * 10) particles.emit(this.asado.x + (Math.random() - 0.5) * 0.8, this.asado.y, this.asado.z + (Math.random() - 0.5) * 0.4, this.wind.x * 0.25 + (Math.random() - 0.5) * 0.3, 0.9 + Math.random() * 0.5, this.wind.z * 0.25 + (Math.random() - 0.5) * 0.3, 0.7, 4.5, 0.62, 0.6, 0.58, 0.28, 1.5, 0.9);
 };
 
 // Textura de pasto: manchas suaves que rompen la uniformidad del terreno (se multiplica con el color por vértice)

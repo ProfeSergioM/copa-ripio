@@ -201,9 +201,9 @@ escape libre. El perfil vale para el auto propio y para los rivales.
 
 ## Ambiente
 
-Bruma baja al amanecer, con niebla y al anochecer (planos con degradado que derivan con el viento), motas
-de polvo y polen a contraluz alrededor de la cámara, parrilla con humo detrás de la tribuna, camionetas de
-hinchas estacionadas, rollos de pasto en el campo. El terreno tiene lomadas y montículos más marcados y los
+Parrilla detrás de la tribuna, camionetas de hinchas estacionadas y rollos de pasto en el campo. La bruma
+baja, las motas a contraluz y el humo de la parrilla existen en el código pero están apagados por rendimiento
+(`ATMOSFERA = false` en `js/world.js`). El terreno tiene lomadas y montículos más marcados y los
 circuitos planos llevan `heightScale` 1,35 (con 1,45 la IA empieza a sufrir). La pintura de los autos tiene
 metalizado fino, veladuras y un brillo de laca en el shader (`dirtify` en `js/car.js`).
 
