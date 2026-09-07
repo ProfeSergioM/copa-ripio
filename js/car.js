@@ -57,24 +57,76 @@ function glassPane(w, h, r = 0.08, divider = null) {
 
 // Perfil lateral del 600: trompa corta y redonda, parabrisas bastante parado, techo abovedado
 // y la cola que cae en curva continua desde el techo hasta el paragolpes (motor atrás).
-function bodyShape() {
+// Variaciones del perfil extruido (el casco que quedó): cada una mueve unas pocas cosas del perfil de las fotos.
+//  hood: altura del capó · cowl: base del parabrisas · roof: altura del techo · roofBack: cuánto se alarga la cabina
+//  hacia atrás · tail: largo de la cola · nose: largo de la trompa · depth: ancho del casco · bevel: redondez del
+//  canto · fender: tamaño de los guardabarros · sill: altura del zócalo
+export const EXTRUDED_DESIGNS = {
+  E1: { name: 'Capó bajo', desc: 'Como el actual pero con el capó 15 % más bajo y el parabrisas más alto, como en la foto de costado.', hood: 0.85, cowl: 0.92, roof: 1.0, roofBack: 1.0, tail: 1.0, nose: 1.0, depth: 1.16, bevel: 0.13, fender: 1.0 },
+  E2: { name: 'Cabina larga', desc: 'Techo que sigue más atrás y luneta más parada: la cola cae corta y panzona.', hood: 0.92, cowl: 0.97, roof: 1.0, roofBack: 1.2, tail: 0.97, nose: 1.0, depth: 1.16, bevel: 0.13, fender: 1.0 },
+  E3: { name: 'Panzón', desc: 'Más ancho y con el canto más redondo; guardabarros más marcados.', hood: 0.92, cowl: 1.0, roof: 1.0, roofBack: 1.05, tail: 1.0, nose: 1.0, depth: 1.26, bevel: 0.15, fender: 1.35 },
+  E4: { name: 'Fotos', desc: 'Mi mejor lectura de las fotos: capó bajo, cabina larga, cola parada, un poco más ancho.', hood: 0.86, cowl: 0.93, roof: 1.0, roofBack: 1.14, tail: 0.98, nose: 1.02, depth: 1.2, bevel: 0.14, fender: 1.15 },
+  E5: { name: 'Bajito', desc: 'Techo 6 % más bajo, capó bajo, más ancho: el de picadas.', hood: 0.88, cowl: 0.94, roof: 0.94, roofBack: 1.08, tail: 1.0, nose: 0.97, depth: 1.22, bevel: 0.14, fender: 1.25 },
+};
+const EXTR_DEFAULT = { hood: 1, cowl: 1, roof: 1, roofBack: 1, tail: 1, nose: 1, depth: 1.16, bevel: 0.13, fender: 1 };
+// Puntos del perfil (x adelante, y alto) según parámetros
+function profilePoints(q = EXTR_DEFAULT) {
+  const H = (y) => 0.6 + (y - 0.6) * q.hood, R = (y) => 0.6 + (y - 0.6) * q.roof;
+  const rb = q.roofBack, tl = q.tail;
+  const pts = [
+    [1.5 * q.nose, 0.5], [1.5 * q.nose, H(0.7)], [1.42 * q.nose, H(0.9)], [1.26, H(1.02)], [1.02, H(1.08)], [0.76, H(1.12)],
+    [0.56, 0.6 + 0.57 * q.cowl], [0.4, R(1.38)], [0.18, R(1.48)], [-0.3, R(1.53)], [-0.78 * rb, R(1.49)],
+    [-1.04 * rb * 0.5 - 0.52 * tl, R(1.36)], [-1.24 * tl, R(1.12) * 0.5 + 0.56], [-1.42 * tl, 0.9], [-1.56 * tl, 0.72], [-1.63 * tl, 0.54], [-1.56 * tl, 0.36],
+  ];
+  return pts;
+}
+function bodyShape(q = EXTR_DEFAULT) {
   const sh = new THREE.Shape();
   // Fiat 600: capó corto que cae redondo ("trompa de bulldog"), parabrisas parado, cabina alta y larga,
   // luneta empinada y cola panzona (el motor va atrás), sin la caída larga de un Renault 4CV.
-  sh.moveTo(1.42, 0.36);
-  sh.splineThru([
-    new THREE.Vector2(1.5, 0.5), new THREE.Vector2(1.5, 0.7), new THREE.Vector2(1.42, 0.9), new THREE.Vector2(1.26, 1.02),
-    new THREE.Vector2(1.02, 1.08), new THREE.Vector2(0.76, 1.12), new THREE.Vector2(0.56, 1.17), new THREE.Vector2(0.4, 1.38),
-    new THREE.Vector2(0.18, 1.48), new THREE.Vector2(-0.3, 1.53), new THREE.Vector2(-0.78, 1.49), new THREE.Vector2(-1.04, 1.36),
-    new THREE.Vector2(-1.24, 1.12), new THREE.Vector2(-1.42, 0.9), new THREE.Vector2(-1.56, 0.72), new THREE.Vector2(-1.63, 0.54),
-    new THREE.Vector2(-1.56, 0.36),
-  ]);
+  const pts = profilePoints(q);
+  sh.moveTo(1.42 * q.nose, 0.36);
+  sh.splineThru(pts.map(([x, y]) => new THREE.Vector2(x, y)));
   sh.lineTo(-1.42, 0.36);
   sh.absarc(-1.0, 0.32, 0.42, Math.PI, 0, true);
   sh.lineTo(0.58, 0.36);
   sh.absarc(1.0, 0.32, 0.42, Math.PI, 0, true);
-  sh.lineTo(1.42, 0.36);
+  sh.lineTo(1.42 * q.nose, 0.36);
   return sh;
+}
+// Superficie exterior del casco extruido (perfil + bisel), con la misma interfaz que el loft, para ubicar piezas
+const extrCache = {};
+function extrudedFor(key) {
+  if (extrCache[key]) return extrCache[key];
+  const q = { ...EXTR_DEFAULT, ...(EXTRUDED_DESIGNS[key] || {}) };
+  const bT = 0.16, bS = q.bevel;
+  const g = new THREE.ExtrudeGeometry(bodyShape(q), { depth: q.depth, bevelEnabled: true, bevelThickness: bT, bevelSize: bS, bevelSegments: 5, curveSegments: 6 });
+  g.translate(0, 0, -q.depth / 2); g.rotateY(-Math.PI / 2); g.computeVertexNormals();
+  // contorno exterior (perfil desplazado bS hacia afuera), rama superior como función de z
+  const pts = bodyShape(q).getPoints(40);
+  const cx = pts.reduce((a, p) => a + p.x, 0) / pts.length, cy = pts.reduce((a, p) => a + p.y, 0) / pts.length;
+  const outer = [];
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[(i - 1 + pts.length) % pts.length], b = pts[(i + 1) % pts.length], p = pts[i];
+    const tx = b.x - a.x, ty = b.y - a.y, L = Math.hypot(tx, ty) || 1; let nx = ty / L, ny = -tx / L;
+    if ((p.x - cx) * nx + (p.y - cy) * ny < 0) { nx = -nx; ny = -ny; }
+    if (p.y > 0.45) outer.push({ z: p.x + nx * bS, y: p.y + ny * bS });
+  }
+  outer.sort((a, b) => a.z - b.z);
+  const top = new Map(); for (const o of outer) { const k = Math.round(o.z * 50) / 50; if (!top.has(k) || top.get(k) < o.y) top.set(k, o.y); }
+  const tz = [...top.keys()].sort((a, b) => a - b), ty = tz.map(k => top.get(k));
+  const topY = (z) => { if (z <= tz[0]) return ty[0]; if (z >= tz[tz.length - 1]) return ty[ty.length - 1]; for (let i = 0; i + 1 < tz.length; i++) if (z >= tz[i] && z <= tz[i + 1]) { const t = (z - tz[i]) / (tz[i + 1] - tz[i]); return ty[i] + (ty[i + 1] - ty[i]) * t; } return ty[ty.length - 1]; };
+  const zMin = tz[0], zMax = tz[tz.length - 1];
+  const flank = q.depth / 2 + bT;
+  const api = {
+    topY,
+    surfaceX: (z, y) => { const d = topY(z) - y; if (d >= bS) return flank; const u = Math.max(0, (bS - d) / bS); return q.depth / 2 + bT * Math.sqrt(Math.max(0, 1 - u * u)); },
+    zAtTopY: (y, side) => { if (side > 0) { for (let i = tz.length - 1; i > 0; i--) if (tz[i] > 0.4 && (ty[i] - y) * (ty[i - 1] - y) <= 0) { const t = (y - ty[i]) / ((ty[i - 1] - ty[i]) || 1); return tz[i] + (tz[i - 1] - tz[i]) * t; } return zMax; } for (let i = 0; i + 1 < tz.length; i++) if (tz[i + 1] < -0.6 && (ty[i] - y) * (ty[i + 1] - y) <= 0) { const t = (y - ty[i]) / ((ty[i + 1] - ty[i]) || 1); return tz[i] + (tz[i + 1] - tz[i]) * t; } return zMin; },
+    slopeAt: (z) => { const dz = 0.05; return Math.atan2(topY(z + dz) - topY(z - dz), 2 * dz); },
+    zMin, zMax, design: q,
+  };
+  extrCache[key] = { geometry: g, api, q };
+  return extrCache[key];
 }
 
 let bodyGeoTemplate = null;
@@ -82,7 +134,7 @@ export let customBody = false;
 const loftCache = {};
 // Diseño de casco activo: null = perfil extruido clásico; 'A'..'D' = loft por secciones (js/carroceria.js)
 export let bodyDesign = null;
-export function setBodyDesign(key) { bodyDesign = key && BODY_DESIGNS[key] ? key : null; }
+export function setBodyDesign(key) { bodyDesign = key && (BODY_DESIGNS[key] || EXTRUDED_DESIGNS[key]) ? key : null; }
 function loftFor(key) { if (!loftCache[key]) loftCache[key] = loftBody(key); return loftCache[key]; }
 
 // Ubicación de vidrios, luces y cromados según la superficie del casco elegido
@@ -95,7 +147,8 @@ function layoutFor(key) {
     tail: { y: 0.8, z: -1.7 }, lid: { y: 0.98, z: -1.49, rot: Math.PI + 0.62 }, bumperF: 1.69, bumperR: -1.78, plateF: { y: 0.44, z: 1.76 }, plateR: -1.74,
     roofY: 1.575, fenders: true, numY: 0.76, stripeH: { y: 1.228, z: 1.02, rot: 0.19 }, roofStripeY: 1.632, wshW: 1.16, rwW: 1.02, wheelX: 0.64,
   };
-  const { api } = loftFor(key);
+  const ex = EXTRUDED_DESIGNS[key] ? extrudedFor(key) : null;
+  const { api } = ex || loftFor(key);
   const rotFor = (z) => { const phi = api.slopeAt(z); return Math.atan2(-Math.cos(phi), -Math.sin(phi)); }; // normal de la chapa → rotation.x de un plano
   const zW = 0.48, zR = api.zAtTopY(1.32, -1);
   const zHead = api.zAtTopY(0.93, 1) - 0.05, zBadge = api.zAtTopY(0.78, 1), zTail = api.zAtTopY(0.8, -1), zLid = api.zAtTopY(1.02, -1);
@@ -108,7 +161,8 @@ function layoutFor(key) {
     tail: { y: 0.8, z: zTail - 0.02 }, lid: { y: 1.02, z: zLid, rot: rotFor(zLid) }, bumperF: api.zMax + 0.02, bumperR: api.zMin - 0.02, plateF: { y: 0.44, z: api.zMax + 0.09 }, plateR: api.zMin - 0.04,
     roofY: api.topY(-0.3) + 0.01, fenders: false, numY: 0.76, stripeH: { y: api.topY(1.0) + 0.012, z: 1.0, rot: api.slopeAt(1.0) }, roofStripeY: api.topY(-0.28) + 0.012,
     // vidrios tan anchos como el domo a su altura; ruedas metidas bajo el guardabarros
-    wshW: 2 * api.surfaceX(zW, api.topY(zW) - 0.12) - 0.04, rwW: 2 * api.surfaceX(zR, api.topY(zR) - 0.12) - 0.04, wheelX: api.surfaceX(1.0, 0.45) - 0.07,
+    wshW: ex ? 1.16 * ex.q.depth / 1.16 : 2 * api.surfaceX(zW, api.topY(zW) - 0.12) - 0.04, rwW: ex ? 1.02 * ex.q.depth / 1.16 : 2 * api.surfaceX(zR, api.topY(zR) - 0.12) - 0.04, wheelX: ex ? 0.64 : api.surfaceX(1.0, 0.45) - 0.07,
+    ...(ex ? { fenders: true, fenderK: ex.q.fender, fenderX: ex.q.depth / 2 + 0.12, mirrorX: ex.q.depth / 2 + 0.3 } : {}),
   };
 }
 // Casco importado (assets/modelos/fitito.json, generado con herramientas/importar_casco.mjs): reemplaza al perfil extruido.
@@ -124,7 +178,7 @@ export async function loadBodyModel(url) {
 }
 function bodyGeometry(designKey = bodyDesign) {
   if (designKey && !customBody) {
-    const g = loftFor(designKey).geometry.clone();
+    const g = (EXTRUDED_DESIGNS[designKey] ? extrudedFor(designKey) : loftFor(designKey)).geometry.clone();
     const n = g.attributes.position.count, pos = g.attributes.position, col = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) { const y = pos.getY(i); const shade = y < 0.42 ? 0.62 : y < 0.6 ? 0.62 + (y - 0.42) / 0.18 * 0.3 : 0.92 + Math.min(1, (y - 0.6) / 0.6) * 0.08; col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = shade; }
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
@@ -276,9 +330,9 @@ export function createCarVisual(spec) {
   root.add(vis);
   const dirt = { value: 0 };
   const bodyMat = dirtify(toonMat(spec.color, { vertexColors: true }), dirt);
-  const design = spec.body !== undefined ? (spec.body && BODY_DESIGNS[spec.body] ? spec.body : null) : bodyDesign;
+  const design = spec.body !== undefined ? (spec.body && (BODY_DESIGNS[spec.body] || EXTRUDED_DESIGNS[spec.body]) ? spec.body : null) : bodyDesign;
   const L = layoutFor(customBody ? null : design);
-  const loft = (design && !customBody) ? loftFor(design) : null;
+  const loft = (design && !customBody && BODY_DESIGNS[design]) ? loftFor(design) : null;
   const geo = bodyGeometry(design);
   const body = new THREE.Mesh(geo, bodyMat);
   body.castShadow = true;
@@ -358,8 +412,9 @@ export function createCarVisual(spec) {
 
   // guardabarros abultados alrededor de las ruedas (color carrocería)
   const fenderMat = dirtify(toonMat(spec.color), dirt);
-  for (const [fx, fz] of (customBody || !L.fenders) ? [] : [[0.7, 1.0], [-0.7, 1.0], [0.7, -1.0], [-0.7, -1.0]]) {
-    const f = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), fenderMat); if (fz > 0) f.scale.set(0.05, 0.24, 0.44); else f.scale.set(0.1, 0.28, 0.48); f.position.set(fx, 0.6, fz); f.castShadow = true; vis.add(f); // adelante casi plano, atrás un bulto discreto
+  const FX = L.fenderX || 0.7, FK = L.fenderK || 1;
+  for (const [fx, fz] of (customBody || !L.fenders) ? [] : [[FX, 1.0], [-FX, 1.0], [FX, -1.0], [-FX, -1.0]]) {
+    const f = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), fenderMat); if (fz > 0) f.scale.set(0.05 * FK, 0.24, 0.44); else f.scale.set(0.1 * FK, 0.28, 0.48); f.position.set(fx, 0.6, fz); f.castShadow = true; vis.add(f); // adelante casi plano, atrás un bulto discreto
     const fo = new THREE.Mesh(f.geometry, outline); fo.position.copy(f.position); fo.scale.copy(f.scale); vis.add(fo);
   }
   // faros redondos sobre los guardabarros
