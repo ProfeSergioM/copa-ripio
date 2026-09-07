@@ -176,6 +176,15 @@ Flujo con Comfy Desktop e Hunyuan3D 2 (imagen → 3D, malla sin textura, que se 
 
 ## El Fitito y la música
 
+Los vidrios van incrustados: las ventanillas laterales son aberturas reales del casco (agujeros en la extrusión,
+`WIN_DOOR` y `WIN_QTR` en `js/car.js`) con labio cromado al ras y el vidrio 3 cm adentro, y un interior oscuro
+que se ve a través; parabrisas y luneta llevan burlete de goma en relieve con filete cromado y el vidrio hundido
+(`gasketPane`). Las piezas se ubican consultando la superficie real del casco (perfil más bisel, `extrudedFor`),
+no por coordenadas fijas. Hay una pasada de detalles activa por defecto (`spec.detalle`): ventanillas grandes,
+canaleta cromada continua en el techo, tres bigotes, paragolpes y tazas más grandes, zócalo cromado.
+En `js/carroceria.js` queda un generador alternativo por secciones (loft) con cuatro diseños, y en `car.js` cinco
+variaciones paramétricas del perfil (`EXTRUDED_DESIGNS`); ninguno está expuesto en el juego: se descartaron.
+
 El modelo sigue fotos del Fiat 600 D: faros redondos altos sobre los guardabarros con aro cromado, luces de
 posición junto al paragolpes, escudo con bigotes cromados, tira por el medio del capó, ventanillas grandes de
 esquinas redondeadas con marco cromado y ventilete, custodia trasera, tomas de aire, parrilla ancha de lamas
