@@ -59,10 +59,10 @@ function station(d, z, zMin, zMax) {
   return { yTop, yBot: Math.min(yBot, yTop - 0.15), w, n, fender };
 }
 const RING = 18; // puntos por medio anillo (de arriba al piso)
-function sectionPoint(st, k, side, d) {
-  // k: 0 arriba (centro) … RING-1 abajo (centro). Dos cuadrantes: domo estrecho arriba del cinturón (huevo)
+function sectionPoint(st, k, side, d) { return sectionPointT(st, k / (RING - 1), side, d); }
+function sectionPointT(st, t, side, d) {
+  // t: 0 arriba (centro) … 1 abajo (centro). Dos cuadrantes: domo estrecho arriba del cinturón (huevo)
   // y panza más llena abajo, con guardabarros. El cinturón (ancho máximo) va a ~55 % de la altura en la cabina.
-  const t = k / (RING - 1);
   const H = st.yTop - st.yBot, tall = H > 0.7;
   const yBelt = st.yBot + H * (tall ? 0.52 : 0.68);
   let x, y;
@@ -123,7 +123,41 @@ export function loftBody(key) {
     // z donde el perfil superior alcanza la altura y, en la trompa (side>0) o en la cola (side<0)
     zAtTopY: (y, side) => { const pts = d._top; let z = side > 0 ? zMax : zMin; for (let i = 0; i + 1 < pts.length; i++) { const [z0, y0] = pts[i], [z1, y1] = pts[i + 1]; const inNose = side > 0 ? z0 > 0.4 : z1 < -0.6; if (!inNose) continue; if ((y0 - y) * (y1 - y) <= 0) { const t = (y - y0) / ((y1 - y0) || 1); z = lerp(z0, z1, t); if (side > 0) return z; } } return z; },
     slopeAt: (z) => { const dz = 0.05; return Math.atan2(interp(d._top, z + dz) - interp(d._top, z - dz), 2 * dz); },
+    // punto de la superficie en coordenadas (z, t): t 0 = techo centro, 0.5 = cinturón, 1 = piso centro; side ±1
+    pointAt: (z, t, side) => { const zc = clamp(z, zMin, zMax); const st = station(d, zc, zMin, zMax); const [x, y] = sectionPointT(st, clamp(t, 0, 1), side, d); return [x, y, zc]; },
+    normalAt: (z, t, side) => {
+      const e = 0.02, et = 0.02;
+      const p = api.pointAt(z, t, side), pz = api.pointAt(z + e, t, side), pt = api.pointAt(z, t + et, side);
+      const az = [pz[0] - p[0], pz[1] - p[1], pz[2] - p[2]], at = [pt[0] - p[0], pt[1] - p[1], pt[2] - p[2]];
+      let n = [az[1] * at[2] - az[2] * at[1], az[2] * at[0] - az[0] * at[2], az[0] * at[1] - az[1] * at[0]];
+      const L = Math.hypot(n[0], n[1], n[2]) || 1; n = n.map(v => v / L);
+      // hacia afuera: alejándose del eje del auto (o hacia arriba en el centro)
+      const cy = (st(z).yTop + st(z).yBot) / 2;
+      if (n[0] * p[0] + n[1] * (p[1] - cy) < 0) n = n.map(v => -v);
+      return n;
+    },
     zMin, zMax, design: d,
   };
+  const st = (z) => station(d, clamp(z, zMin, zMax), zMin, zMax);
   return { geometry: g, api };
+}
+
+// Parche que sigue la superficie: rectángulo en el espacio (z, t) de un lado, levantado "offset" sobre la chapa.
+// Sirve para vidrios, marcos cromados, molduras, costuras y franjas, que así calzan en cualquier casco.
+export function surfacePatch(api, z0, z1, t0, t1, side, offset = 0.006, nz = 12, nt = 8) {
+  const pos = [], nor = [], idx = [];
+  for (let i = 0; i <= nz; i++) for (let j = 0; j <= nt; j++) {
+    const z = lerp(z0, z1, i / nz), t = lerp(t0, t1, j / nt);
+    const p = api.pointAt(z, t, side), n = api.normalAt(z, t, side);
+    pos.push(p[0] + n[0] * offset, p[1] + n[1] * offset, p[2] + n[2] * offset); nor.push(n[0], n[1], n[2]);
+  }
+  for (let i = 0; i < nz; i++) for (let j = 0; j < nt; j++) {
+    const a = i * (nt + 1) + j, b = a + 1, c = a + nt + 1, e = c + 1;
+    if (side > 0) idx.push(a, c, b, b, c, e); else idx.push(a, b, c, b, e, c);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setIndex(idx);
+  return g;
 }

@@ -1,7 +1,7 @@
 // Modelo caricaturesco del Fiat 600 ("Fitito"), con daños visibles (abolladuras, piezas que se caen).
 import * as THREE from 'three';
 import { clamp, mulberry32 } from './util.js';
-import { BODY_DESIGNS, loftBody } from './carroceria.js';
+import { BODY_DESIGNS, loftBody, surfacePatch } from './carroceria.js';
 
 let gradientMap = null;
 export function toonGradient() {
@@ -212,6 +212,62 @@ function dirtify(mat, dirt) {
 }
 export function setDirt(cv, v) { cv.dirt.value = v; }
 
+// Detalles que siguen la chapa del casco lofteado: vidrios con marco, ventilete, costuras de puerta, moldura,
+// luces, escudo con bigotes, luces de posición y guiños, espejo, manijas, tomas de aire y número de puerta.
+function buildLoftDetails(loft, spec, vis, addPart, headlights, taillights, numMat) {
+  const api = loft.api, zMax = api.zMax, zMin = api.zMin;
+  const patch = (z0, z1, t0, t1, side, off, mat, nz = 12, nt = 8) => { const m = new THREE.Mesh(surfacePatch(api, z0, z1, t0, t1, side, off, nz, nt), mat); vis.add(m); return m; };
+  const both = (z0, z1, t0, t1, off, mat, nz, nt) => { patch(z0, z1, t0, t1, 1, off, mat, nz, nt); patch(z0, z1, t0, t1, -1, off, mat, nz, nt); };
+  const at = (z, t, side, off = 0.02) => { const p = api.pointAt(z, t, side), n = api.normalAt(z, t, side); return { p: new THREE.Vector3(p[0] + n[0] * off, p[1] + n[1] * off, p[2] + n[2] * off), n: new THREE.Vector3(n[0], n[1], n[2]) }; };
+  const place = (obj, z, t, side, off = 0.02) => { const { p, n } = at(z, t, side, off); obj.position.copy(p); obj.lookAt(p.clone().add(n)); vis.add(obj); return obj; };
+  const frameMat = chromeMat, seamMat = toonMat('#1d130c');
+  // vidrios: marco cromado (un poco más grande, pegado) y vidrio encima
+  const glass = (z0, z1, t0, t1, sides) => { for (const sd of sides) { patch(z0 - 0.03, z1 + 0.03, Math.max(0, t0 - 0.025), t1 + 0.025, sd, 0.004, frameMat); patch(z0, z1, t0, t1, sd, 0.008, glassMat); } };
+  glass(0.37, 0.6, 0.0, 0.37, [1, -1]);          // parabrisas
+  glass(zMin + 0.36, zMin + 0.64, 0.0, 0.36, [1, -1]); // luneta
+  glass(-0.36, 0.44, 0.17, 0.43, [1, -1]);        // ventanilla de puerta
+  glass(-0.84, -0.47, 0.19, 0.41, [1, -1]);       // custodia
+  both(0.2, 0.225, 0.17, 0.43, 0.011, frameMat, 2, 6); // ventilete
+  // costuras de la puerta y moldura cromada del cinturón
+  both(0.5, 0.515, 0.1, 0.96, 0.005, seamMat, 2, 12); both(-0.53, -0.515, 0.1, 0.96, 0.005, seamMat, 2, 12);
+  both(-0.52, 0.51, 0.95, 0.965, 0.005, seamMat, 12, 2); both(-0.52, 0.51, 0.44, 0.455, 0.005, seamMat, 12, 2);
+  both(zMin + 0.45, zMax - 0.45, 0.63, 0.65, 0.008, frameMat, 24, 2);
+  // tira del capó y costura del baúl
+  both(0.66, zMax - 0.1, 0.0, 0.012, 0.008, frameMat, 16, 2);
+  both(zMax - 0.1, zMax - 0.085, 0.0, 0.42, 0.005, seamMat, 2, 8); both(0.63, 0.645, 0.0, 0.4, 0.005, seamMat, 2, 8);
+  // franjas de carrera
+  if (spec.stripes) { const sm = toonMat(spec.stripeColor || '#fff8e6'); both(-0.75, 0.3, 0.04, 0.11, 0.009, sm, 16, 3); both(0.66, zMax - 0.14, 0.04, 0.12, 0.009, sm, 12, 3); }
+  // faros: reflector, lamparita, lente y aro, sobre la trompa
+  for (const sd of [-1, 1]) {
+    const zH = zMax - 0.3, tH = 0.28;
+    place(new THREE.Mesh(new THREE.CircleGeometry(0.13, 16), chromeMat), zH, tH, sd, 0.012);
+    place(new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), lightOn), zH, tH, sd, 0.04);
+    const hl = place(new THREE.Mesh(new THREE.SphereGeometry(0.15, 14, 12), lensMat), zH, tH, sd, -0.02); hl.scale.z = 0.72; headlights.push(hl);
+    place(new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.025, 6, 18), chromeMat), zH, tH, sd, 0.05);
+    // luces de posición y guiños
+    place(new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), toonMat('#fff2d0', { emissive: '#8a7a40', emissiveIntensity: 0.3 })), zMax - 0.06, 0.62, sd, 0.0).scale.z = 0.6;
+    place(new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.014, 6, 12), chromeMat), zMax - 0.06, 0.62, sd, 0.03);
+    place(new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), toonMat('#ffb340', { emissive: '#7a4a00', emissiveIntensity: 0.4 })), 1.05, 0.5, sd, 0.0);
+    // luces traseras y reflector
+    const tl = place(new THREE.Mesh(new THREE.SphereGeometry(0.085, 10, 8), tailOff), zMin + 0.2, 0.33, sd, 0.0); tl.scale.z = 0.6; tl.castShadow = false; taillights.push(tl);
+    place(new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.02, 6, 12), chromeMat), zMin + 0.2, 0.33, sd, 0.04);
+    place(new THREE.Mesh(new THREE.CircleGeometry(0.035, 10), toonMat('#b02020')), zMin + 0.08, 0.6, sd, 0.008);
+    // número de puerta, manija, tomas de aire del motor
+    place(new THREE.Mesh(new THREE.CircleGeometry(0.25, 24), numMat), -0.02, 0.62, sd, 0.01);
+    place(box(0.16, 0.04, 0.03, chromeMat), 0.42, 0.5, sd, 0.02);
+    place(box(0.22, 0.16, 0.08, darkMat), -0.93, 0.34, sd, 0.0);
+    place(box(0.06, 0.18, 0.05, chromeMat), -0.83, 0.34, sd, 0.03);
+  }
+  // escudo y bigotes cromados
+  const badge = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.03, 14), toonMat('#c8342a')); badge.geometry.rotateX(Math.PI / 2); place(badge, zMax - 0.14, 0.0, 1, 0.01);
+  place(new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.014, 6, 14), chromeMat), zMax - 0.14, 0.0, 1, 0.025);
+  for (const sd of [-1, 1]) for (const [tt, len] of [[0.12, 0.3], [0.2, 0.26]]) place(box(len, 0.022, 0.03, chromeMat), zMax - 0.15, tt, sd, 0.012);
+  // espejo en la puerta del piloto, con brazo
+  const { p: mp, n: mn } = at(0.5, 0.3, 1, 0.14);
+  const mirror = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.03, 12), chromeMat); mirror.rotation.z = Math.PI / 2; mirror.position.copy(mp); addPart(mirror, 'left', 0.35);
+  const arm = box(0.14, 0.02, 0.02, chromeMat); arm.position.copy(mp.clone().sub(mn.clone().multiplyScalar(0.07))); arm.lookAt(mp.clone().add(mn)); arm.rotateY(Math.PI / 2); vis.add(arm);
+}
+
 export function createCarVisual(spec) {
   const rnd = mulberry32(spec.seed || 1);
   const root = new THREE.Group();
@@ -222,6 +278,7 @@ export function createCarVisual(spec) {
   const bodyMat = dirtify(toonMat(spec.color, { vertexColors: true }), dirt);
   const design = spec.body !== undefined ? (spec.body && BODY_DESIGNS[spec.body] ? spec.body : null) : bodyDesign;
   const L = layoutFor(customBody ? null : design);
+  const loft = (design && !customBody) ? loftFor(design) : null;
   const geo = bodyGeometry(design);
   const body = new THREE.Mesh(geo, bodyMat);
   body.castShadow = true;
@@ -252,6 +309,7 @@ export function createCarVisual(spec) {
   }
 
   // vidrios: parabrisas corto y parado, luneta que cae, ventanillas de puerta y custodia
+  if (!loft) {
   // parabrisas y luneta grandes, de esquinas redondeadas y marco cromado, por fuera del bisel del casco
   const wsh = glassPane(L.wshW, 0.44, 0.1); wsh.position.set(0, L.wsh.y, L.wsh.z); wsh.rotation.x = L.wsh.rot; vis.add(wsh);
   const rw = glassPane(L.rwW, 0.42, 0.12); rw.position.set(0, L.rw.y, L.rw.z); rw.rotation.x = L.rw.rot; vis.add(rw);
@@ -265,6 +323,8 @@ export function createCarVisual(spec) {
     // manijas (puertas "suicidas": manija adelante)
     const h = box(0.03, 0.04, 0.16, chromeMat); h.position.set(sx * (L.flankX + 0.01), 0.88, 0.42); vis.add(h);
   }
+  }
+  if (!loft) {
   // moldura cromada lateral, filete de la puerta y bisagras (puerta suicida, abre hacia adelante)
   for (const sx of [-1, 1]) {
     const strip = box(0.02, 0.03, 2.4, chromeMat); strip.position.set(sx * L.flankX, 0.62, 0.05); vis.add(strip);
@@ -281,11 +341,14 @@ export function createCarVisual(spec) {
     const parkRing = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.014, 6, 12), chromeMat); parkRing.position.set(sx * 0.45, 0.6, L.park.z + 0.02); vis.add(parkRing);
   }
   // limpiaparabrisas y espejo interior
+  }
+  if (!loft) {
   // limpiaparabrisas apoyados en la base del parabrisas y espejo interior colgado de su borde superior
   const wshTop = { y: L.wsh.y + 0.19 * Math.cos(L.wsh.rot), z: L.wsh.z + 0.19 * Math.sin(-L.wsh.rot) };
   const wshBase = { y: L.wsh.y - 0.2 * Math.cos(L.wsh.rot), z: L.wsh.z - 0.2 * Math.sin(-L.wsh.rot) };
   for (const wx of [-0.25, 0.2]) { const wiper = box(0.03, 0.02, 0.3, darkMat); wiper.position.set(wx, wshBase.y + 0.03, wshBase.z + 0.02); wiper.rotation.x = L.wsh.rot; wiper.rotation.y = 0.35; vis.add(wiper); }
   const innerMirror = box(0.2, 0.05, 0.02, darkMat); innerMirror.position.set(0, wshTop.y - 0.08, wshTop.z - 0.12); vis.add(innerMirror);
+  }
   // piloto (cabeza con casco y torso), volante a la izquierda
   const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), toonMat(spec.helmetColor || '#e2a33b'));
   helmet.position.set(0.3, 1.14, 0.0); vis.add(helmet);
@@ -301,7 +364,7 @@ export function createCarVisual(spec) {
   }
   // faros redondos sobre los guardabarros
   const headlights = [], taillights = [];
-  for (const sx of [-1, 1]) {
+  if (!loft) for (const sx of [-1, 1]) {
     // faros redondos grandes, altos sobre los guardabarros, con aro cromado
     // óptica: reflector cromado, lamparita y lente de vidrio transparente, con aro cromado
     const refl = new THREE.Mesh(new THREE.CircleGeometry(0.13, 16), chromeMat); refl.position.set(sx * 0.5, 0.93, L.head.reflZ); vis.add(refl);
@@ -317,6 +380,7 @@ export function createCarVisual(spec) {
     const rrefl = new THREE.Mesh(new THREE.CircleGeometry(0.035, 10), toonMat('#b02020')); rrefl.position.set(sx * 0.5, 0.62, L.bumperR + 0.06); rrefl.rotation.y = Math.PI; vis.add(rrefl);
   }
   // insignia y bigote cromado
+  if (!loft) {
   // escudo FIAT al centro con bigotes cromados a los lados, y tira cromada por el medio del capó
   const badge = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.03, 14), toonMat('#c8342a')); badge.rotation.x = Math.PI / 2 + L.badge.tilt; badge.position.set(0, L.badge.y, L.badge.z); vis.add(badge);
   const badgeRing = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.014, 6, 14), chromeMat); badgeRing.rotation.x = L.badge.tilt; badgeRing.position.set(0, L.badge.y, L.badge.z + 0.01); vis.add(badgeRing);
@@ -328,6 +392,7 @@ export function createCarVisual(spec) {
   const hoodSeamF = box(0.9, 0.015, 0.025, darkMat); hoodSeamF.position.set(0, L.hood.seamF.y, L.hood.seamF.z); hoodSeamF.rotation.x = L.hood.seamF.rot; vis.add(hoodSeamF);
   const hoodSeamB = box(0.9, 0.015, 0.025, darkMat); hoodSeamB.position.set(0, L.hood.seamB.y, L.hood.seamB.z); hoodSeamB.rotation.x = L.hood.rot; vis.add(hoodSeamB);
   const frontPlate = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.12), new THREE.MeshToonMaterial({ map: plateTexture('FIAT ' + spec.number), gradientMap: toonGradient() })); frontPlate.position.set(0, L.plateF.y, L.plateF.z); vis.add(frontPlate);
+  }
   // tapa del motor: junta oscura alrededor, rejilla de lamas en un hueco y manija cromada
   const lid = new THREE.Group(); lid.position.set(0, L.lid.y, L.lid.z); lid.rotation.x = L.lid.rot;
   const seam = new THREE.Mesh(new THREE.ShapeGeometry(roundedRect(1.0, 0.58, 0.11)), toonMat('#1d130c')); seam.position.z = 0.005; lid.add(seam);
@@ -337,6 +402,7 @@ export function createCarVisual(spec) {
   for (let i = 0; i < 7; i++) { const slat = box(0.66, 0.02, 0.02, chromeMat); slat.position.set(0, -0.18 + i * 0.04, 0.03); lid.add(slat); }
   const lidHandle = box(0.14, 0.03, 0.03, chromeMat); lidHandle.position.set(0, 0.18, 0.03); lid.add(lidHandle);
   const emblem = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.065), new THREE.MeshToonMaterial({ map: plateTexture('600'), gradientMap: toonGradient() })); emblem.position.set(-0.3, 0.18, 0.03); emblem.rotation.z = Math.PI; lid.add(emblem);
+  if (loft) { const q = loft.api.pointAt(L.lid.z, 0, 1), n = loft.api.normalAt(L.lid.z, 0.02, 1); lid.position.set(0, q[1] + n[1] * 0.006, q[2] + n[2] * 0.006); lid.rotation.set(0, 0, 0); lid.lookAt(0, q[1] + n[1], q[2] + n[2]); lid.rotateZ(Math.PI); }
   vis.add(lid);
   // luz de patente y caño de escape
   const plateLamp = box(0.14, 0.05, 0.08, chromeMat); plateLamp.position.set(0, 0.6, L.plateR); vis.add(plateLamp);
@@ -348,18 +414,21 @@ export function createCarVisual(spec) {
   addPart(mkBumper(L.bumperF), 'front', 0.55);
   addPart(mkBumper(L.bumperR), 'rear', 0.55);
   // espejo
+  if (!loft) {
   const mirror = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.03, 12), chromeMat); mirror.rotation.z = Math.PI / 2; mirror.position.set(L.mirrorX, 1.06, 0.5); addPart(mirror, 'left', 0.35);
   const mirrorArm = box(0.16, 0.02, 0.02, chromeMat); mirrorArm.position.set(L.mirrorX - 0.08, 1.02, 0.5); mirrorArm.rotation.z = 0.35; vis.add(mirrorArm);
+  }
   // patente
   const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.13), new THREE.MeshToonMaterial({ map: plateTexture('FIAT ' + spec.number), gradientMap: toonGradient() }));
   plate.position.set(0, 0.5, L.plateR); plate.rotation.y = Math.PI; addPart(plate, 'rear', 0.8);
   // números
   const numTex = numberTexture(spec.number);
   const numMat = new THREE.MeshToonMaterial({ map: numTex, gradientMap: toonGradient(), transparent: true });
-  for (const sx of [-1, 1]) {
+  if (!loft) for (const sx of [-1, 1]) {
     const nm = new THREE.Mesh(new THREE.CircleGeometry(0.25, 24), numMat);
     nm.position.set(sx * L.numX, L.numY, -0.02); nm.rotation.y = sx * Math.PI / 2; vis.add(nm);
   }
+  if (loft) buildLoftDetails(loft, spec, vis, addPart, headlights, taillights, numMat);
   const nh = new THREE.Mesh(new THREE.CircleGeometry(0.24, 24), numMat);
   nh.position.set(0, L.stripeH.y + 0.004, 1.0); nh.rotation.x = -Math.PI / 2 + L.stripeH.rot; vis.add(nh);
 
