@@ -16,9 +16,11 @@ export const ENGINE_PROFILES = {
 export class GameAudio {
   constructor() { this.ctx = null; this.volume = 0.8; this.muted = false; this.musicOn = true; this.state = 'menu'; this.aiVoices = []; this.birdT = 1; this.crowdT = 0; this.popT = 0; }
 
-  init() {
-    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
-    const ctx = this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+  // existing: contexto ya creado (p. ej. OfflineAudioContext para medir la mezcla fuera de línea)
+  init(existing = null) {
+    if (this.ctx) { if (this.ctx.state === 'suspended' && this.ctx.resume) this.ctx.resume(); return; }
+    // latencyHint 'playback': búfer más grande, sin cortes cuando el hilo de audio compite con el dibujo
+    const ctx = this.ctx = existing || new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'playback' });
     this.master = ctx.createGain(); this.master.gain.value = this.volume * 1.2;
     // compresor suave y, al final, un limitador duro para que no sature
     this.comp = ctx.createDynamicsCompressor(); this.comp.threshold.value = -14; this.comp.ratio.value = 3; this.comp.knee.value = 18; this.comp.attack.value = 0.01; this.comp.release.value = 0.25;
@@ -32,7 +34,8 @@ export class GameAudio {
     this.profile = ENGINE_PROFILES.preparado; this.previewT = 0;
     this.engine = this.makeEngineVoice(true);
     this.engine.out.connect(this.master);
-    for (let i = 0; i < 7; i++) { const v = this.makeEngineVoice(true); v.pan = ctx.createStereoPanner(); v.out.connect(v.pan); v.pan.connect(this.master); v.car = null; this.aiVoices.push(v); }
+    // rivales: 5 voces simples (2 osciladores + escape), suficiente de lejos y mucho más barato que la voz rica
+    for (let i = 0; i < 5; i++) { const v = this.makeEngineVoice(false); v.pan = ctx.createStereoPanner(); v.out.connect(v.pan); v.pan.connect(this.master); v.car = null; this.aiVoices.push(v); }
     this.gravel = this.noiseVoice(320, 0.8); this.gravel.out.connect(this.master);
     this.grass = this.noiseVoice(140, 0.6); this.grass.out.connect(this.master);
     this.skid = this.noiseVoice(1500, 3); this.skid.out.connect(this.master);
@@ -57,7 +60,6 @@ export class GameAudio {
     if (motor.every(Boolean)) {
       this.samples = { motor, fund: [42.8, 59.9, 64.5, 70.9, 71.5, 76.5], rpmAt: [900, 1900, 2900, 4000, 5100, 6300] };
       this.engine.sample = this.makeSampleLayers(this.engine);
-      for (const v of this.aiVoices) v.sample = this.makeSampleLayers(v);
     }
     const [skid, crash, wind, start] = await Promise.all([load('chirrido.wav'), load('golpe.ogg'), load('viento.wav'), load('arranque.wav')]);
     this.crashBuf = crash; this.startBuf = start;

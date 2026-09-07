@@ -188,6 +188,12 @@ propia en 6/8: mandolina en trémolo (`pluck`), acordeón en acordes, bajo "um-p
 
 ## Sonido del motor
 
+La mezcla se mide fuera de línea con un `OfflineAudioContext` (`GameAudio.init(ctx)` acepta un contexto):
+con el jugador a fondo y 10 rivales alrededor los picos quedan en 0,8 y no hay corriente continua ni caídas.
+Los cortes en tiempo real venían de un grafo pesado (8 voces ricas y 48 loops de muestras siempre sonando)
+compitiendo con el dibujo: ahora los rivales usan 5 voces simples sin muestras, y el contexto se crea con
+`latencyHint: 'playback'` (búfer más grande). Si en una máquina lenta vuelven los cortes, bajar sombras ayuda.
+
 En Ajustes hay cinco perfiles de motor (`ENGINE_PROFILES` en `js/audio.js`) con botón "Probar" que hace un
 acelerón: grabado (muestras cruzadas por régimen), Fitito de fábrica (sintetizador suave), escape libre
 (rasposo, con petardeo), preparado de picadas (gira más alto; es el que viene por defecto) y grabado con
