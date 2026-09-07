@@ -46,24 +46,10 @@ function roundedRect(w, h, r) {
   sh.lineTo(x, y + r); sh.quadraticCurveTo(x, y, x + r, y);
   return sh;
 }
-// Aberturas de las ventanillas en el perfil (agujeros de la extrusión): quedan dentro de la tapa plana del casco
-const WIN_DOOR = { z0: -0.34, z1: 0.32, y0: 0.97, y1: 1.31, r: 0.06 }, WIN_QTR = { z0: -0.86, z1: -0.44, y0: 0.97, y1: 1.26, r: 0.07 };
-function ringShape(w, h, r, band) {
-  const sh = roundedRect(w + band * 2, h + band * 2, r + band);
-  const hole = roundedRect(w, h, r); sh.holes.push(hole); return sh;
-}
-// Vidrio incrustado con burlete de goma en relieve y filete cromado afuera (parabrisas y luneta)
-function gasketPane(w, h, r = 0.1) {
-  const g = new THREE.Group();
-  const chrome = new THREE.Mesh(new THREE.ExtrudeGeometry(ringShape(w + 0.05, h + 0.05, r + 0.025, 0.016), { depth: 0.012, bevelEnabled: false }), chromeMat); g.add(chrome);
-  const rubber = new THREE.Mesh(new THREE.ExtrudeGeometry(ringShape(w, h, r, 0.026), { depth: 0.022, bevelEnabled: false }), toonMat('#1d130c')); g.add(rubber);
-  const glass = new THREE.Mesh(new THREE.ExtrudeGeometry(roundedRect(w, h, r), { depth: 0.006, bevelEnabled: false }), glassMat); glass.position.z = 0.004; g.add(glass);
-  return g;
-}
 // Vidrio con marco cromado: un rectángulo redondeado de cromo apenas más grande, y el vidrio delante.
-function glassPane(w, h, r = 0.08, divider = null, margin = 0.05) {
+function glassPane(w, h, r = 0.08, divider = null) {
   const g = new THREE.Group();
-  const frame = new THREE.Mesh(new THREE.ExtrudeGeometry(roundedRect(w + margin, h + margin, r + margin * 0.4), { depth: 0.02, bevelEnabled: false }), chromeMat); g.add(frame);
+  const frame = new THREE.Mesh(new THREE.ExtrudeGeometry(roundedRect(w + 0.05, h + 0.05, r + 0.02), { depth: 0.02, bevelEnabled: false }), chromeMat); g.add(frame);
   const glass = new THREE.Mesh(new THREE.ExtrudeGeometry(roundedRect(w, h, r), { depth: 0.02, bevelEnabled: false }), glassMat); glass.position.z = 0.012; g.add(glass);
   if (divider != null) { const d = new THREE.Mesh(new THREE.BoxGeometry(0.02, h, 0.03), chromeMat); d.position.set(divider, 0, 0.02); g.add(d); }
   return g;
@@ -82,7 +68,7 @@ export const EXTRUDED_DESIGNS = {
   E4: { name: 'Fotos', desc: 'Mi mejor lectura de las fotos: capó bajo, cabina larga, cola parada, un poco más ancho.', hood: 0.86, cowl: 0.93, roof: 1.0, roofBack: 1.14, tail: 0.98, nose: 1.02, depth: 1.2, bevel: 0.14, fender: 1.15 },
   E5: { name: 'Bajito', desc: 'Techo 6 % más bajo, capó bajo, más ancho: el de picadas.', hood: 0.88, cowl: 0.94, roof: 0.94, roofBack: 1.08, tail: 1.0, nose: 0.97, depth: 1.22, bevel: 0.14, fender: 1.25 },
 };
-const EXTR_DEFAULT = { hood: 1, cowl: 1, roof: 1, roofBack: 1, tail: 1, nose: 1, depth: 1.16, bevel: 0.09, fender: 1 }; // bisel más chico: más tapa plana para las ventanillas
+const EXTR_DEFAULT = { hood: 1, cowl: 1, roof: 1, roofBack: 1, tail: 1, nose: 1, depth: 1.16, bevel: 0.13, fender: 1 };
 // Puntos del perfil (x adelante, y alto) según parámetros
 function profilePoints(q = EXTR_DEFAULT) {
   const H = (y) => 0.6 + (y - 0.6) * q.hood, R = (y) => 0.6 + (y - 0.6) * q.roof;
@@ -106,8 +92,6 @@ function bodyShape(q = EXTR_DEFAULT) {
   sh.lineTo(0.58, 0.36);
   sh.absarc(1.0, 0.32, 0.42, Math.PI, 0, true);
   sh.lineTo(1.42 * q.nose, 0.36);
-  // ventanillas: aberturas de lado a lado (se ve el interior oscuro y el vidrio va metido)
-  for (const W of [WIN_DOOR, WIN_QTR]) { const hole = roundedRect(W.z1 - W.z0, W.y1 - W.y0, W.r); const path = new THREE.Path(); const pts = hole.getPoints(12); pts.forEach((pt, i) => { const x = pt.x + (W.z0 + W.z1) / 2, y = pt.y + (W.y0 + W.y1) / 2; if (i === 0) path.moveTo(x, y); else path.lineTo(x, y); }); path.closePath(); sh.holes.push(path); }
   return sh;
 }
 // Superficie exterior del casco extruido (perfil + bisel), con la misma interfaz que el loft, para ubicar piezas
@@ -115,7 +99,7 @@ const extrCache = {};
 function extrudedFor(key) {
   if (extrCache[key]) return extrCache[key];
   const q = { ...EXTR_DEFAULT, ...(EXTRUDED_DESIGNS[key] || {}) };
-  const bT = 0.14, bS = q.bevel;
+  const bT = 0.16, bS = q.bevel;
   const g = new THREE.ExtrudeGeometry(bodyShape(q), { depth: q.depth, bevelEnabled: true, bevelThickness: bT, bevelSize: bS, bevelSegments: 5, curveSegments: 6 });
   g.translate(0, 0, -q.depth / 2); g.rotateY(-Math.PI / 2); g.computeVertexNormals();
   // contorno exterior (perfil desplazado bS hacia afuera), rama superior como función de z
@@ -155,7 +139,7 @@ function loftFor(key) { if (!loftCache[key]) loftCache[key] = loftBody(key); ret
 
 // Ubicación de vidrios, luces y cromados según la superficie del casco elegido
 function layoutFor(key) {
-  if (key === '__fijo__') return {
+  if (!key) return {
     wsh: { y: 1.4, z: 0.56, rot: -0.51 }, rw: { y: 1.37, z: -1.25, rot: Math.PI + 0.69 },
     doorX: 0.735, quarterX: 0.73, flankX: 0.752, numX: 0.748, mirrorX: 0.88,
     head: { z: 1.545, ringZ: 1.6, reflZ: 1.565, bulbZ: 1.59 }, badge: { y: 0.76, z: 1.64, tilt: -0.23 }, park: { z: 1.65 },
@@ -163,10 +147,10 @@ function layoutFor(key) {
     tail: { y: 0.8, z: -1.7 }, lid: { y: 0.98, z: -1.49, rot: Math.PI + 0.62 }, bumperF: 1.69, bumperR: -1.78, plateF: { y: 0.44, z: 1.76 }, plateR: -1.74,
     roofY: 1.575, fenders: true, numY: 0.76, stripeH: { y: 1.228, z: 1.02, rot: 0.19 }, roofStripeY: 1.632, wshW: 1.16, rwW: 1.02, wheelX: 0.64,
   };
-  const ex = (!key || EXTRUDED_DESIGNS[key]) ? extrudedFor(key || 'E0') : null;
+  const ex = EXTRUDED_DESIGNS[key] ? extrudedFor(key) : null;
   const { api } = ex || loftFor(key);
   const rotFor = (z) => { const phi = api.slopeAt(z); return Math.atan2(-Math.cos(phi), -Math.sin(phi)); }; // normal de la chapa → rotation.x de un plano
-  const zW = ex ? 0.545 : 0.48, zR = api.zAtTopY(1.32, -1); // centro del parabrisas sobre su chapa (el extruido tiene el cowl más atrás)
+  const zW = 0.48, zR = api.zAtTopY(1.32, -1);
   const zHead = api.zAtTopY(0.93, 1) - 0.05, zBadge = api.zAtTopY(0.78, 1), zTail = api.zAtTopY(0.8, -1), zLid = api.zAtTopY(1.02, -1);
   const zH = 0.95;
   return {
@@ -200,7 +184,13 @@ function bodyGeometry(designKey = bodyDesign) {
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
     return g;
   }
-  if (!bodyGeoTemplate) bodyGeoTemplate = extrudedFor('E0').geometry;
+  if (!bodyGeoTemplate) {
+    const g = new THREE.ExtrudeGeometry(bodyShape(), { depth: 1.16, bevelEnabled: true, bevelThickness: 0.16, bevelSize: 0.13, bevelSegments: 5, curveSegments: 6 });
+    g.translate(0, 0, -0.58);
+    g.rotateY(-Math.PI / 2);
+    g.computeVertexNormals();
+    bodyGeoTemplate = g;
+  }
   const g = bodyGeoTemplate.clone();
   const n = g.attributes.position.count, pos = g.attributes.position;
   const col = new Float32Array(n * 3);
@@ -275,7 +265,6 @@ function dirtify(mat, dirt) {
   return mat;
 }
 export function setDirt(cv, v) { cv.dirt.value = v; }
-export function debugLayout(key = null) { const L = layoutFor(key); const api = extrudedFor(key || 'E0').api; return { L, top: [0.3, 0.4, 0.48, 0.56, 0.7, 1.0, 1.3].map(z => [z, +api.topY(z).toFixed(3), +api.slopeAt(z).toFixed(2)]), zMax: api.zMax, zMin: api.zMin }; }
 
 // Detalles que siguen la chapa del casco lofteado: vidrios con marco, ventilete, costuras de puerta, moldura,
 // luces, escudo con bigotes, luces de posición y guiños, espejo, manijas, tomas de aire y número de puerta.
@@ -344,7 +333,6 @@ export function createCarVisual(spec) {
   const design = spec.body !== undefined ? (spec.body && (BODY_DESIGNS[spec.body] || EXTRUDED_DESIGNS[spec.body]) ? spec.body : null) : bodyDesign;
   const L = layoutFor(customBody ? null : design);
   const loft = (design && !customBody && BODY_DESIGNS[design]) ? loftFor(design) : null;
-  const D = spec.detalle !== false; // pasada de detalles (ventanillas grandes, marcos finos, canaleta, bigotes, paragolpes, tazas)
   const geo = bodyGeometry(design);
   const body = new THREE.Mesh(geo, bodyMat);
   body.castShadow = true;
@@ -358,8 +346,6 @@ export function createCarVisual(spec) {
   const parts = [];
   const addPart = (mesh, zone, threshold) => { mesh.castShadow = true; vis.add(mesh); parts.push({ mesh, zone, threshold, attached: true }); return mesh; };
 
-  // interior de la cabina, oscuro, visto por las ventanillas
-  if (!loft) { const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.24, 0.6, 1.7), toonMat('#3a2a20', { side: THREE.BackSide })); cabin.position.set(0, 1.12, -0.22); vis.add(cabin); }
   // piso (tapa las aberturas de los pasarruedas)
   const floor = box(1.1, 0.3, 2.9, darkMat); floor.position.set(0, 0.45, 0); floor.castShadow = false; vis.add(floor);
 
@@ -379,17 +365,12 @@ export function createCarVisual(spec) {
   // vidrios: parabrisas corto y parado, luneta que cae, ventanillas de puerta y custodia
   if (!loft) {
   // parabrisas y luneta grandes, de esquinas redondeadas y marco cromado, por fuera del bisel del casco
-  const wsh = gasketPane(L.wshW + 0.04, 0.4, 0.1); wsh.position.set(0, L.wsh.y, L.wsh.z); wsh.rotation.x = L.wsh.rot; vis.add(wsh);
-  const rw = gasketPane(L.rwW + 0.04, 0.44, 0.12); rw.position.set(0, L.rw.y, L.rw.z); rw.rotation.x = L.rw.rot; vis.add(rw);
+  const wsh = glassPane(L.wshW, 0.44, 0.1); wsh.position.set(0, L.wsh.y, L.wsh.z); wsh.rotation.x = L.wsh.rot; vis.add(wsh);
+  const rw = glassPane(L.rwW, 0.42, 0.12); rw.position.set(0, L.rw.y, L.rw.z); rw.rotation.x = L.rw.rot; vis.add(rw);
   for (const sx of [-1, 1]) {
     // ventanilla de puerta con ventilete adelante, y custodia trasera
-    // ventanillas incrustadas: labio cromado al ras del casco y vidrio 3 cm adentro de la abertura
-    for (const [W, div] of [[WIN_DOOR, 0.24], [WIN_QTR, null]]) {
-      const w = W.z1 - W.z0, h = W.y1 - W.y0, cz = (W.z0 + W.z1) / 2, cy = (W.y0 + W.y1) / 2;
-      const lip = new THREE.Mesh(new THREE.ExtrudeGeometry(ringShape(w, h, W.r, 0.022), { depth: 0.012, bevelEnabled: false }), chromeMat); lip.position.set(sx * (L.flankX - 0.014), cy, cz); lip.rotation.y = sx * Math.PI / 2; vis.add(lip);
-      const gl = new THREE.Mesh(new THREE.ExtrudeGeometry(roundedRect(w + 0.02, h + 0.02, W.r), { depth: 0.006, bevelEnabled: false }), glassMat); gl.position.set(sx * (L.flankX - 0.045), cy, cz); gl.rotation.y = sx * Math.PI / 2; vis.add(gl);
-      if (div != null) { const d = box(0.02, h, 0.03, chromeMat); d.position.set(sx * (L.flankX - 0.03), cy, div); vis.add(d); }
-    }
+    const dw = glassPane(0.8, 0.36, 0.07, 0.22); dw.position.set(sx * L.doorX, 1.17, 0.1); dw.rotation.y = sx * Math.PI / 2; vis.add(dw);
+    const qw = glassPane(0.38, 0.32, 0.09); qw.position.set(sx * L.quarterX, 1.16, -0.6); qw.rotation.y = sx * Math.PI / 2; vis.add(qw);
     // tomas de aire del motor detrás de la custodia (marca registrada del 600)
     const scoop = box(0.1, 0.16, 0.22, darkMat); scoop.position.set(sx * (L.flankX - 0.02), 1.06, -0.95); scoop.rotation.y = sx * 0.35; vis.add(scoop);
     const scoopLip = box(0.06, 0.18, 0.06, chromeMat); scoopLip.position.set(sx * (L.flankX + 0.02), 1.06, -0.84); vis.add(scoopLip);
@@ -400,9 +381,7 @@ export function createCarVisual(spec) {
   if (!loft) {
   // moldura cromada lateral, filete de la puerta y bisagras (puerta suicida, abre hacia adelante)
   for (const sx of [-1, 1]) {
-    const strip = box(0.02, D ? 0.045 : 0.03, 2.4, chromeMat); strip.position.set(sx * L.flankX, 0.62, 0.05); vis.add(strip);
-    if (D) { const sill = box(0.02, 0.035, 1.4, chromeMat); sill.position.set(sx * (L.flankX - 0.02), 0.4, 0.0); vis.add(sill); }
-    if (D && !loft) { const ex = extrudedFor(design || 'E0').api; const pts = []; for (let z = -1.0; z <= 0.5; z += 0.05) { const y = ex.topY(z) - 0.1; pts.push(new THREE.Vector3(sx * (ex.surfaceX(z, y) + 0.006), y, z)); } const rail = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 40, 0.012, 6, false), chromeMat); vis.add(rail); } // canaleta cromada del techo (tubo continuo)
+    const strip = box(0.02, 0.03, 2.4, chromeMat); strip.position.set(sx * L.flankX, 0.62, 0.05); vis.add(strip);
     // marco de la puerta: dos verticales, el zócalo y la línea bajo la ventanilla
     const seamF = box(0.015, 0.58, 0.025, darkMat); seamF.position.set(sx * L.flankX, 0.71, 0.46); vis.add(seamF);
     const seamR = box(0.015, 0.58, 0.025, darkMat); seamR.position.set(sx * L.flankX, 0.71, -0.5); vis.add(seamR);
@@ -419,9 +398,8 @@ export function createCarVisual(spec) {
   }
   if (!loft) {
   // limpiaparabrisas apoyados en la base del parabrisas y espejo interior colgado de su borde superior
-  // eje local +y del parabrisas en el mundo: (0, cos rot, sin rot) → arriba y hacia atrás
-  const wshTop = { y: L.wsh.y + 0.18 * Math.cos(L.wsh.rot), z: L.wsh.z + 0.18 * Math.sin(L.wsh.rot) };
-  const wshBase = { y: L.wsh.y - 0.21 * Math.cos(L.wsh.rot), z: L.wsh.z - 0.21 * Math.sin(L.wsh.rot) };
+  const wshTop = { y: L.wsh.y + 0.19 * Math.cos(L.wsh.rot), z: L.wsh.z + 0.19 * Math.sin(-L.wsh.rot) };
+  const wshBase = { y: L.wsh.y - 0.2 * Math.cos(L.wsh.rot), z: L.wsh.z - 0.2 * Math.sin(-L.wsh.rot) };
   for (const wx of [-0.25, 0.2]) { const wiper = box(0.03, 0.02, 0.3, darkMat); wiper.position.set(wx, wshBase.y + 0.03, wshBase.z + 0.02); wiper.rotation.x = L.wsh.rot; wiper.rotation.y = 0.35; vis.add(wiper); }
   const innerMirror = box(0.2, 0.05, 0.02, darkMat); innerMirror.position.set(0, wshTop.y - 0.08, wshTop.z - 0.12); vis.add(innerMirror);
   }
@@ -461,7 +439,7 @@ export function createCarVisual(spec) {
   // escudo FIAT al centro con bigotes cromados a los lados, y tira cromada por el medio del capó
   const badge = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.03, 14), toonMat('#c8342a')); badge.rotation.x = Math.PI / 2 + L.badge.tilt; badge.position.set(0, L.badge.y, L.badge.z); vis.add(badge);
   const badgeRing = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.014, 6, 14), chromeMat); badgeRing.rotation.x = L.badge.tilt; badgeRing.position.set(0, L.badge.y, L.badge.z + 0.01); vis.add(badgeRing);
-  for (const sx of [-1, 1]) for (const [dy, len] of (D ? [[0.06, 0.3], [0.0, 0.32], [-0.06, 0.26]] : [[0.045, 0.3], [-0.03, 0.26]])) { const wk = box(len, 0.022, 0.03, chromeMat); wk.rotation.x = L.badge.tilt; wk.position.set(sx * (0.12 + len / 2), L.badge.y + dy, L.badge.z - 0.005 - dy * 0.25); vis.add(wk); }
+  for (const sx of [-1, 1]) for (const [dy, len] of [[0.045, 0.3], [-0.03, 0.26]]) { const wk = box(len, 0.022, 0.03, chromeMat); wk.rotation.x = L.badge.tilt; wk.position.set(sx * (0.12 + len / 2), L.badge.y + dy, L.badge.z - 0.005 - dy * 0.25); vis.add(wk); }
   // tapa del baúl (adelante): tira cromada por el medio y costura en U
   const hoodStrip = box(0.02, 0.014, 0.74, chromeMat); hoodStrip.position.set(0, L.hood.y, L.hood.z); hoodStrip.rotation.x = L.hood.rot; vis.add(hoodStrip);
   const hoodStripB = box(0.02, 0.014, 0.3, chromeMat); hoodStripB.position.set(0, L.hood.stripB.y, L.hood.stripB.z); hoodStripB.rotation.x = L.hood.stripB.rot; vis.add(hoodStripB);
@@ -486,8 +464,8 @@ export function createCarVisual(spec) {
   const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.22, 8), chromeMat); pipe.rotation.x = Math.PI / 2; pipe.position.set(-0.42, 0.38, L.bumperR + 0.06); vis.add(pipe);
   const pipeEnd = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.02, 8), darkMat); pipeEnd.rotation.x = Math.PI / 2; pipeEnd.position.set(-0.42, 0.38, L.bumperR - 0.05); vis.add(pipeEnd);
   // paragolpes con defensas (desprendibles)
-  const bumperGeo = new THREE.CylinderGeometry(D ? 0.055 : 0.045, D ? 0.055 : 0.045, D ? 1.4 : 1.3, 8);
-  const mkBumper = (z) => { const g = new THREE.Group(); const b = new THREE.Mesh(bumperGeo, chromeMat); b.rotation.z = Math.PI / 2; g.add(b); for (const sx of [-0.42, 0.42]) { const o = box(D ? 0.09 : 0.07, 0.16, 0.08, chromeMat); o.position.set(sx, 0, 0); g.add(o); } g.position.set(0, 0.42, z); return g; };
+  const bumperGeo = new THREE.CylinderGeometry(0.045, 0.045, 1.3, 8);
+  const mkBumper = (z) => { const g = new THREE.Group(); const b = new THREE.Mesh(bumperGeo, chromeMat); b.rotation.z = Math.PI / 2; g.add(b); for (const sx of [-0.42, 0.42]) { const o = box(0.07, 0.16, 0.08, chromeMat); o.position.set(sx, 0, 0); g.add(o); } g.position.set(0, 0.42, z); return g; };
   addPart(mkBumper(L.bumperF), 'front', 0.55);
   addPart(mkBumper(L.bumperR), 'rear', 0.55);
   // espejo
@@ -537,8 +515,8 @@ export function createCarVisual(spec) {
   // ruedas chicas con tazas grandes
   const wheels = [];
   const wheelGeo = new THREE.CylinderGeometry(0.29, 0.29, 0.19, 16);
-  const rimGeo = new THREE.CylinderGeometry(D ? 0.2 : 0.19, D ? 0.2 : 0.19, 0.03, 14);
-  const wwGeo = new THREE.TorusGeometry(D ? 0.245 : 0.235, D ? 0.02 : 0.028, 6, 18);
+  const rimGeo = new THREE.CylinderGeometry(0.19, 0.19, 0.03, 14);
+  const wwGeo = new THREE.TorusGeometry(0.235, 0.028, 6, 18);
   const rimMat = dirtify(toonMat(spec.color), dirt);
   const WX = L.wheelX;
   for (const [x, z, steer] of [[WX, 1.0, true], [-WX, 1.0, true], [WX, -1.0, false], [-WX, -1.0, false]]) {
@@ -547,7 +525,7 @@ export function createCarVisual(spec) {
     const spin = new THREE.Group(); spin.add(tire);
     const rim = new THREE.Mesh(rimGeo, rimMat); rim.rotation.z = Math.PI / 2; rim.position.x = Math.sign(x) * 0.095; spin.add(rim);
     if (spec.whitewall !== false) { const ww = new THREE.Mesh(wwGeo, whitewallMat); ww.rotation.y = Math.PI / 2; ww.position.x = Math.sign(x) * 0.1; spin.add(ww); }
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(D ? 0.15 : 0.12, 12, 10), chromeMat); dome.scale.set(0.35, 1, 1); dome.position.x = Math.sign(x) * 0.11; spin.add(dome);
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), chromeMat); dome.scale.set(0.35, 1, 1); dome.position.x = Math.sign(x) * 0.11; spin.add(dome);
     const ol = new THREE.Mesh(wheelGeo, outline); ol.rotation.z = Math.PI / 2; spin.add(ol);
     w.add(spin); vis.add(w);
     wheels.push({ group: w, spin, steer, side: Math.sign(x) });
