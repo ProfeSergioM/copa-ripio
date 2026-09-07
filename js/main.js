@@ -245,7 +245,9 @@ function startPodium(results) {
   const cx = s.x + s.nx * -(app.track.W + 4.5), cz = s.z + s.nz * -(app.track.W + 4.5);
   const base = app.track.heightAt(cx, cz);
   const pod = new THREE.Group(); pod.position.set(cx, base, cz); pod.rotation.y = s.heading;
-  const heights = [1.0, 0.7, 0.5], offs = [0, -3.2, 3.2], cols = ['#e2a33b', '#c9d0d6', '#b5733c'];
+  // escalones de podio real (el auto mide 1,4 m): 60 / 40 / 25 cm sobre una base que tapa el desnivel del pasto
+  const heights = [0.6, 0.4, 0.25], offs = [0, -3.2, 3.2], cols = ['#e2a33b', '#c9d0d6', '#b5733c'];
+  const plinth = new THREE.Mesh(new THREE.BoxGeometry(10.4, 0.5, 5.6), new THREE.MeshToonMaterial({ color: '#8a7a68' })); plinth.position.set(0, -0.2, 0); plinth.receiveShadow = true; pod.add(plinth);
   heights.forEach((h, i) => { const m = new THREE.Mesh(new THREE.BoxGeometry(2.9, h, 4.4), new THREE.MeshToonMaterial({ color: cols[i] })); m.position.set(offs[i], h / 2, 0); m.castShadow = true; m.receiveShadow = true; pod.add(m); const t = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.06, 4.4), new THREE.MeshToonMaterial({ color: '#fff3d6' })); t.position.set(offs[i], h + 0.03, 0); pod.add(t); });
   app.scene.add(pod);
   top.forEach((c, i) => { const v = c.vis.root; const wx = cx + Math.cos(s.heading) * offs[i], wz = cz - Math.sin(s.heading) * offs[i]; v.position.set(wx, base + heights[i], wz); v.rotation.y = s.heading; c.vis.vis.rotation.set(0, 0, 0); c.state.x = wx; c.state.z = wz; });
@@ -258,9 +260,9 @@ function startPodium(results) {
 }
 function updatePodium(dt) {
   const P = app.podium; P.t += dt;
-  const a = P.heading + Math.PI + Math.sin(P.t * 0.35) * 0.9, r = 11;
-  app.camera.position.set(P.cx + Math.sin(a) * r, P.base + 3.2, P.cz + Math.cos(a) * r);
-  app.camera.lookAt(P.cx, P.base + 1.2, P.cz); app.chase.setFov(40);
+  const a = P.heading + Math.PI + Math.sin(P.t * 0.35) * 0.9, r = 10.5;
+  app.camera.position.set(P.cx + Math.sin(a) * r, P.base + 2.4, P.cz + Math.cos(a) * r);
+  app.camera.lookAt(P.cx, P.base + 0.9, P.cz); app.chase.setFov(40);
   // papelitos
   for (let k = 0; k < 6; k++) { const col = [[1, 0.3, 0.3], [1, 0.85, 0.2], [0.3, 0.6, 1], [0.4, 0.9, 0.4]][k % 4]; app.particles.emit(P.cx + (Math.random() - 0.5) * 12, P.base + 6 + Math.random() * 3, P.cz + (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 2, -0.5, (Math.random() - 0.5) * 2, 0.18, 4, col[0], col[1], col[2], 1, 0, -1.2); }
   app.world.cheerLevel = 1.5;
