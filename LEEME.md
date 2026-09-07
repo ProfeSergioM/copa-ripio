@@ -213,7 +213,8 @@ Desde el menú, **Multijugador**: uno crea la sala con el código que quiera (3 
 o recibe uno de 4 letras al azar; los demás
 entran con el código (hasta 8 personas, solo humanos: en red no corren rivales de IA).
 La sala tiene un link (`?sala=CODIGO`) con botones para copiarlo, compartirlo (en el celular) o mandarlo
-por WhatsApp; quien lo abre entra directo. El anfitrión elige la fecha y larga. En la misma pantalla cada uno cambia nombre, número, colores
+por WhatsApp; quien lo abre entra directo. Cada navegador tiene una identidad guardada (`coparipio.device`) y el
+anfitrión rechaza una segunda entrada desde el mismo dispositivo (por ejemplo, el propio anfitrión abriendo su link). El anfitrión elige la fecha y larga. En la misma pantalla cada uno cambia nombre, número, colores
 y franjas; el cambio se ve al instante en la lista de la sala de todos.
 
 Funciona entre navegadores por **WebRTC con PeerJS** (`js/net.js`): el servidor público

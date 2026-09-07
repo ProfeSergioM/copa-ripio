@@ -7,18 +7,28 @@ import { ROUNDS } from './championship.js';
 import { mulberry32, wrapAngle, lerp, clamp } from './util.js';
 
 const RATE = 1 / 20;
+// Identidad del dispositivo (persistente en este navegador): evita que alguien entre dos veces a la misma sala.
+export function deviceId() {
+  try { let id = localStorage.getItem('coparipio.device'); if (!id) { id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36); localStorage.setItem('coparipio.device', id); } return id; } catch (e) { return 'anon'; }
+}
 
 export class Multiplayer {
   constructor(app) {
     this.app = app; this.net = new Net(); this.players = []; this.race = null; this.acc = 0; this.active = false; this.ready = new Set(); this.status = '';
     const n = this.net;
     n.on('join', (_, from) => { /* espera el hello con nombre y auto */ });
-    n.on('hello', (m, from) => { if (this.net.role !== 'host') return; if (this.players.length >= 8) { n.send(from, { t: 'full' }); return; } this.players.push({ id: from, name: m.name, spec: m.spec, local: false }); n.send(from, { t: 'welcome', id: from }); this.broadcastLobby(); });
+    n.on('hello', (m, from) => {
+      if (this.net.role !== 'host') return;
+      if (this.players.length >= 8) { n.send(from, { t: 'full' }); return; }
+      if (m.device && this.players.some(p => p.device === m.device)) { n.send(from, { t: 'dup' }); return; } // mismo dispositivo ya adentro
+      this.players.push({ id: from, name: m.name, spec: m.spec, device: m.device, local: false }); n.send(from, { t: 'welcome', id: from }); this.broadcastLobby();
+    });
     n.on('update', (m, from) => { if (this.net.role !== 'host') return; const p = this.players.find(x => x.id === from); if (p) { p.name = m.name; p.spec = m.spec; this.broadcastLobby(); } });
     n.on('leave', (_, from) => { this.players = this.players.filter(p => p.id !== from); this.broadcastLobby(); if (this.race) this.dropCar(from); });
     n.on('lobby', (m) => { if (this.net.role === 'guest') { this.players = m.players.map(p => ({ ...p, local: p.id === this.net.myId })); this.roundIdx = m.roundIdx; this.onLobby && this.onLobby(); } });
     n.on('welcome', (m) => { this.status = 'Conectado. Esperando que el anfitrión largue…'; this.onLobby && this.onLobby(); });
-    n.on('full', () => { this.status = 'La sala está llena.'; this.onLobby && this.onLobby(); });
+    n.on('full', () => { this.status = 'La sala está llena.'; this.net.close(); this.players = []; this.onLobby && this.onLobby(); });
+    n.on('dup', () => { this.status = 'Ya estás en esta sala desde este dispositivo (otra pestaña o ventana). Usá esa.'; this.net.close(); this.players = []; this.onLobby && this.onLobby(); });
     n.on('hostgone', () => { this.status = 'El anfitrión se fue.'; this.onLobby && this.onLobby(); if (this.active) this.onHostGone && this.onHostGone(); });
     n.on('start', (m) => { if (this.net.role === 'guest') { this.players = m.players.map(p => ({ ...p, local: p.id === this.net.myId })); this.onStart && this.onStart(m); } });
     n.on('ready', (_, from) => { this.ready.add(from); this.tryGo(); });
@@ -32,7 +42,7 @@ export class Multiplayer {
   // custom: código elegido por el anfitrión (letras y números); si no, 4 letras al azar
   createRoom(name, spec, cb, custom) {
     const code = custom || randomCode();
-    this.players = [{ id: 'host', name, spec: { ...spec }, local: true }]; this.roundIdx = 0;
+    this.players = [{ id: 'host', name, spec: { ...spec }, device: deviceId(), local: true }]; this.roundIdx = 0;
     this.status = 'Creando sala…';
     this.net.host(code, () => { this.status = `Sala ${code}. Pasá el código a tus amigos.`; cb && cb(null, code); this.onLobby && this.onLobby(); }, (e) => {
       this.status = e && e.type === 'unavailable-id' ? `El código ${code} ya está en uso. Elegí otro.` : 'No se pudo crear la sala: ' + (e.type || e.message || e);
@@ -41,7 +51,7 @@ export class Multiplayer {
   }
   joinRoom(code, name, spec, cb) {
     this.status = 'Buscando la sala ' + code + '…';
-    this.net.join(code, () => { this.net.sendHost({ t: 'hello', name, spec: { ...spec } }); cb && cb(null); }, (e) => {
+    this.net.join(code, () => { this.net.sendHost({ t: 'hello', name, spec: { ...spec }, device: deviceId() }); cb && cb(null); }, (e) => {
       this.status = e && e.type === 'peer-unavailable' ? `No hay ninguna sala ${code}.` : 'No se pudo entrar: ' + (e.type || e.message || e);
       this.net.close(); this.players = []; cb && cb(e); this.onLobby && this.onLobby();
     });

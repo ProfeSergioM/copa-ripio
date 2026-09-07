@@ -41,7 +41,7 @@ export class Net {
       const timer = setTimeout(() => { if (!conn.open) onError && onError(new Error('No se encontró la sala ' + code)); }, 9000);
       conn.on('open', () => { clearTimeout(timer); this.conns.set(conn.peer, conn); onOpen && onOpen(); });
       conn.on('data', (d) => this._recv(d, conn.peer));
-      conn.on('close', () => { this.emit('hostgone', {}); });
+      conn.on('close', () => { if (this.role === 'guest') this.emit('hostgone', {}); }); // si cerramos nosotros, no es que se fue el anfitrión
       conn.on('error', (e) => { clearTimeout(timer); onError && onError(e); });
     });
     peer.on('error', (e) => { onError && onError(e); });
@@ -51,5 +51,5 @@ export class Net {
   send(to, msg) { const c = this.conns.get(to); if (c && c.open) { try { c.send(msg); } catch (e) { /* se cayó */ } } }
   sendHost(msg) { if (this.hostConn && this.hostConn.open) { try { this.hostConn.send(msg); } catch (e) { /* se cayó */ } } }
   broadcast(msg, except) { for (const [id, c] of this.conns) if (id !== except && c.open) { try { c.send(msg); } catch (e) { /* se cayó */ } } }
-  close() { try { this.peer && this.peer.destroy(); } catch (e) { /* nada */ } this.peer = null; this.conns.clear(); this.hostConn = null; this.role = null; }
+  close() { this.role = null; try { this.peer && this.peer.destroy(); } catch (e) { /* nada */ } this.peer = null; this.conns.clear(); this.hostConn = null; }
 }
