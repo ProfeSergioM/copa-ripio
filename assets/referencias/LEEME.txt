@@ -1,3 +1,7 @@
 Poné acá las fotos de referencia del Fiat 600 (jpg/png, fondo liso, de 3/4 o de costado) para generar el casco con ComfyUI:
   node herramientas/comfy_fitito.mjs assets/referencias/fiat600.jpg
   node herramientas/importar_casco.mjs assets/modelos/fitito_raw.glb
+
+Fotos de referencia (solo para generar el modelo, no se distribuyen con el juego):
+- fiat600_tres_cuartos.jpg: "Fiat 600 D" por exfordy (Flickr), CC BY 2.0, via Wikimedia Commons.
+- fiat600_lado.jpg: "Fiat 600 D 1966", CC BY-SA 4.0, via Wikimedia Commons.

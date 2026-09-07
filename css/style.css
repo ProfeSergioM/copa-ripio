@@ -216,5 +216,8 @@ td.num, th.num { text-align: right; }
 .mp-create .buttons, .mp-join .buttons { margin: 0; }
 .mp-status { font-weight: 600; color: var(--brick); min-height: 22px; }
 .mp-note { font-size: 13px; opacity: .8; }
+.mp-share { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0 2px; }
+.mp-share input { flex: 1 1 220px; min-width: 0; font-size: 13px; padding: 6px 8px; }
+.btn.wa { background: #25d366; color: #fff; text-decoration: none; }
 .mp-codebox { font-size: 22px; margin-bottom: 10px; } .mp-codebox b { font-family: 'Bangers', Impact, sans-serif; font-size: 44px; letter-spacing: 8px; color: var(--brick); text-shadow: 3px 3px 0 var(--ink); }
 .mp-players { background: #fff; border: 3px solid var(--ink); border-radius: 12px; padding: 8px 12px; margin-bottom: 8px; min-height: 40px; }

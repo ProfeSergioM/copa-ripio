@@ -90,6 +90,11 @@ async function init() {
   showcase();
   ui.setLoading(1, 'Listo');
   setTimeout(() => { ui.showScreen('menu'); app.state = 'menu'; }, 300);
+  // llegó por un link de sala (?sala=CODIGO): abre Multijugador y entra solo
+  const salaLink = new URLSearchParams(location.search).get('sala');
+  if (salaLink && CODE_RE.test(salaLink.toUpperCase())) {
+    setTimeout(() => { showMp(); $('mp-code').value = salaLink.toUpperCase(); app.mp.status = `Entrando a la sala ${salaLink.toUpperCase()}…`; renderLobby(); $('btn-mp-join').click(); }, 700);
+  }
   requestAnimationFrame(loop);
 }
 
@@ -181,6 +186,7 @@ function applyPlayerSpec() {
   clearTimeout(app.rebuildT); app.rebuildT = setTimeout(() => showcase(), 250);
 }
 const CODE_RE = /^[A-Z0-9]{3,10}$/;
+function roomLink(code) { const u = new URL(location.href); u.search = ''; u.hash = ''; u.searchParams.set('sala', code); return u.toString(); }
 function readCode(id) { const v = $(id).value.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''); $(id).value = v; return v; }
 function showMp() {
   const sel = $('mp-round'); if (!sel.options.length) ROUNDS.forEach((r, i) => { if (r.mode !== 'timetrial') { const o = document.createElement('option'); o.value = i; o.textContent = `${r.name} · ${r.laps} vueltas`; sel.appendChild(o); } });
@@ -193,6 +199,11 @@ function renderLobby() {
   $('mp-setup').classList.toggle('hidden', inRoom);
   $('mp-room').classList.toggle('hidden', !inRoom);
   $('mp-codebig').textContent = mp.net.code || '';
+  // link para compartir: quien lo abre entra directo a la sala
+  const link = mp.net.code ? roomLink(mp.net.code) : '';
+  $('mp-link').value = link;
+  $('mp-wa').href = link ? 'https://wa.me/?text=' + encodeURIComponent(`¡Carrera de Fiat 600! Entrá a mi sala de Formula 600: ${link}`) : '#';
+  $('btn-mp-share').classList.toggle('hidden', !navigator.share);
   const esc = (t) => String(t).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
   $('mp-players').innerHTML = mp.players.map(p => { const sp = p.spec || {}; return `<div class="order-row${p.local ? ' me' : ''}"><span class="chip" style="background:${sp.color || '#888'}"></span><span class="p">#${sp.number || '?'}</span><span>${esc(p.name)}${p.id === 'host' ? ' (anfitrión)' : ''}${p.local ? ' (vos)' : ''}</span></div>`; }).join('') || '<i>Nadie todavía</i>';
   $('mp-round').disabled = !host; $('mp-round').value = String(mp.roundIdx || 0);
@@ -362,6 +373,8 @@ function bindUI() {
   $('btn-mp-create').onclick = () => { app.audio.init(); const custom = readCode('mp-newcode'); if (custom && !CODE_RE.test(custom)) { app.mp.status = 'El código: de 3 a 10 letras o números, sin espacios.'; renderLobby(); return; } app.mp.createRoom(app.playerSpec.name, app.playerSpec, () => renderLobby(), custom || null); renderLobby(); };
   $('btn-mp-join').onclick = () => { app.audio.init(); const code = readCode('mp-code'); if (!CODE_RE.test(code)) { app.mp.status = 'Escribí el código de la sala (de 3 a 10 letras o números).'; renderLobby(); return; } app.mp.joinRoom(code, app.playerSpec.name, app.playerSpec, () => renderLobby()); renderLobby(); };
   $('mp-round').onchange = (e) => app.mp.setRound(parseInt(e.target.value));
+  $('btn-mp-copy').onclick = async () => { const v = $('mp-link').value; try { await navigator.clipboard.writeText(v); ui.toast('Link copiado', 'good', 2000); } catch (e) { $('mp-link').select(); document.execCommand && document.execCommand('copy'); ui.toast('Link seleccionado: copialo con Ctrl+C', 'good', 3000); } };
+  $('btn-mp-share').onclick = async () => { try { await navigator.share({ title: 'Formula 600', text: 'Entrá a mi sala de Formula 600', url: $('mp-link').value }); } catch (e) { /* canceló */ } };
   $('btn-mp-start').onclick = () => { if (app.mp.players.length < 1) return; app.mp.hostStart(); };
   $('btn-quick').onclick = () => startRace(true);
   $('btn-records').onclick = () => { app.ui.renderRecords(CIRCUITS); app.ui.showScreen('records'); };

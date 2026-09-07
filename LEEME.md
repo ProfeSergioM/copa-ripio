@@ -206,7 +206,8 @@ metalizado fino, veladuras y un brillo de laca en el shader (`dirtify` en `js/ca
 Desde el menú, **Multijugador**: uno crea la sala con el código que quiera (3 a 10 letras o números)
 o recibe uno de 4 letras al azar; los demás
 entran con el código (hasta 8 personas, solo humanos: en red no corren rivales de IA).
-El anfitrión elige la fecha y larga. En la misma pantalla cada uno cambia nombre, número, colores
+La sala tiene un link (`?sala=CODIGO`) con botones para copiarlo, compartirlo (en el celular) o mandarlo
+por WhatsApp; quien lo abre entra directo. El anfitrión elige la fecha y larga. En la misma pantalla cada uno cambia nombre, número, colores
 y franjas; el cambio se ve al instante en la lista de la sala de todos.
 
 Funciona entre navegadores por **WebRTC con PeerJS** (`js/net.js`): el servidor público
