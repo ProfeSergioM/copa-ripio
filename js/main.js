@@ -11,7 +11,6 @@ import { ChaseCamera } from './camera.js';
 import { Championship, ROUNDS, POINTS, makeRoster } from './championship.js';
 import { computeStageTimes } from './stage.js';
 import { LIVERY_COLORS, KEYS } from './config.js';
-import { loadBodyModel } from './car.js';
 import { clamp, lerp } from './util.js';
 import { STRIDE } from './replay.js';
 import { Multiplayer } from './multiplayer.js';
@@ -75,11 +74,18 @@ async function init() {
   app.audio = new GameAudio(); app.audio.setEngineProfile(app.settings.engine || 'preparado');
   app.audio.volume = app.settings.volume; app.audio.musicOn = app.settings.music;
   app.chase = new ChaseCamera(camera, null);
-  app.mp = new Multiplayer(app); app.mp.onLobby = renderLobby; app.mp.onStart = startMultiplayerRace; app.mp.onResults = onMpResults; app.mp.onHostGone = () => { app.ui.toast('El anfitrión se desconectó', 'bad', 4000); };
+  app.mp = new Multiplayer(app); app.mp.onLobby = renderLobby; app.mp.onStart = startMultiplayerRace; app.mp.onResults = onMpResults; app.mp.onHostGone = () => {
+    app.ui.toast('El anfitrión se desconectó: la carrera sigue sola', 'bad', 5000);
+    // el invitado pasa a decidir sus propios resultados: si no, esperaría para siempre
+    const r = app.race;
+    if (r && r.netGuest) {
+      r.netGuest = false; r.netHost = false;
+      for (const c of r.cars) if (c.remote) { c.dropped = true; c.state.finished = true; c.state.finishTime = c.state.finishTime || 9999; }
+      app.mp.active = false; app.mp.race = null;
+    }
+  };
   app.champ = Championship.load();
   const round = app.champ ? app.champ.current : ROUNDS[0];
-  ui.setLoading(0.03, 'Buscando el casco del Fitito');
-  await loadBodyModel('assets/modelos/fitito.json'); // si no existe, queda el perfil procedural
   ui.setLoading(0.05, 'Trazando la pista');
   await new Promise(r => setTimeout(r, 20));
   await prepareWorld(round, (f, txt) => ui.setLoading(0.1 + f * 0.85, txt));

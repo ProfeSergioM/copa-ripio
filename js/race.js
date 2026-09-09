@@ -2,7 +2,7 @@
 // contrarreloj, grabación de repetición, surcos en el ripio y visuales.
 import * as THREE from 'three';
 import { createCar, stepCar, collideCars, collideBarrier, impactZone, applyDamage, resetCarAt } from './physics.js';
-import { createCarVisual, deformBody, detachParts, breakHeadlight, setHeadlights, setBrakeLights, setDirt, createRivalStar } from './car.js';
+import { createCarVisual, disposeCarVisual, deformBody, detachParts, breakHeadlight, setHeadlights, setBrakeLights, setDirt, createRivalStar } from './car.js';
 import { AIDriver, buildRacingLine } from './ai.js';
 import { CAR, SURFACES, RACE } from './config.js';
 import { clamp, formatTime, dampTo } from './util.js';
@@ -373,6 +373,11 @@ export class Race {
     for (const c of this.cars) {
       const s = c.state, v = c.vis;
       v.root.position.set(s.x, s.y, s.z); v.root.rotation.y = s.heading;
+      // nivel de detalle: de lejos se ocultan los adornos (cromados, paragolpes, piloto, tazas)
+      const dCam2 = (s.x - camX) ** 2 + (s.z - camZ) ** 2;
+      // un rival pegado a la cámara se ve como un manchón que tapa la pantalla: no se dibuja
+      v.root.visible = c.isPlayer || dCam2 > 2.4 * 2.4;
+      if (v.lod) { const cerca = c.isPlayer || dCam2 < 30 * 30; if (cerca !== v.lodCerca) { v.lodCerca = cerca; for (const m of v.lod) m.visible = cerca; } }
       let pitch = clamp(Math.atan(s.gradF || 0) - s.accFwd * 0.012, -0.3, 0.3), roll = clamp(-Math.atan(s.gradL || 0) - s.accLat * 0.02, -0.3, 0.3);
       if (s.airborne) pitch = clamp(-s.vy * 0.05, -0.35, 0.35);
       const bump = (!s.airborne && Math.abs(s.speed) > 3) ? Math.sin(this.time * 37 + c.gridSlot) * 0.006 * SURFACES[s.surface].rolling * clamp(Math.abs(s.speed) / 15, 0, 1) : 0;
@@ -482,8 +487,8 @@ export class Race {
   }
 
   dispose() {
-    for (const c of this.cars) this.scene.remove(c.vis.root);
-    if (this.star) this.scene.remove(this.star);
+    for (const c of this.cars) { this.scene.remove(c.vis.root); disposeCarVisual(c.vis); }
+    if (this.star) { this.scene.remove(this.star); this.star.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material && !o.material.userData.compartido) o.material.dispose(); }); }
     this.debris.clear();
   }
 }

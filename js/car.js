@@ -1,7 +1,7 @@
 // Modelo caricaturesco del Fiat 600 ("Fitito"), con daños visibles (abolladuras, piezas que se caen).
 import * as THREE from 'three';
 import { clamp, mulberry32 } from './util.js';
-import { BODY_DESIGNS, loftBody, surfacePatch } from './carroceria.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 let gradientMap = null;
 export function toonGradient() {
@@ -37,6 +37,14 @@ const outline = outlineMat();
 const woodMat = toonMat('#a8743c');
 const suitcaseMats = ['#b5533c', '#3f6fb5', '#c9a26b', '#6f8f4b'].map(c => toonMat(c));
 const whitewallMat = toonMat('#f3eee2');
+const blinkMat = toonMat('#ffb340', { emissive: '#7a4a00', emissiveIntensity: 0.4 });
+const parkMat = toonMat('#fff2d0', { emissive: '#8a7a40', emissiveIntensity: 0.3 });
+const reflMat = toonMat('#b02020');
+const badgeMat = toonMat('#c8342a');
+const seamMat = toonMat('#1d130c');
+// Materiales de modulo: los comparten todos los autos y todas las carreras, no hay que liberarlos
+for (const m of [chromeMat, tireMat, hubMat, glassMat, darkMat, lightOn, lensMat, lightBroken, tailOff, tailOn,
+                 outline, woodMat, whitewallMat, blinkMat, parkMat, reflMat, badgeMat, seamMat, ...suitcaseMats]) m.userData.compartido = true;
 
 function roundedRect(w, h, r) {
   const sh = new THREE.Shape(); const x = -w / 2, y = -h / 2;
@@ -57,20 +65,10 @@ function glassPane(w, h, r = 0.08, divider = null) {
 
 // Perfil lateral del 600: trompa corta y redonda, parabrisas bastante parado, techo abovedado
 // y la cola que cae en curva continua desde el techo hasta el paragolpes (motor atrás).
-// Variaciones del perfil extruido (el casco que quedó): cada una mueve unas pocas cosas del perfil de las fotos.
-//  hood: altura del capó · cowl: base del parabrisas · roof: altura del techo · roofBack: cuánto se alarga la cabina
-//  hacia atrás · tail: largo de la cola · nose: largo de la trompa · depth: ancho del casco · bevel: redondez del
-//  canto · fender: tamaño de los guardabarros · sill: altura del zócalo
-export const EXTRUDED_DESIGNS = {
-  E1: { name: 'Capó bajo', desc: 'Como el actual pero con el capó 15 % más bajo y el parabrisas más alto, como en la foto de costado.', hood: 0.85, cowl: 0.92, roof: 1.0, roofBack: 1.0, tail: 1.0, nose: 1.0, depth: 1.16, bevel: 0.13, fender: 1.0 },
-  E2: { name: 'Cabina larga', desc: 'Techo que sigue más atrás y luneta más parada: la cola cae corta y panzona.', hood: 0.92, cowl: 0.97, roof: 1.0, roofBack: 1.2, tail: 0.97, nose: 1.0, depth: 1.16, bevel: 0.13, fender: 1.0 },
-  E3: { name: 'Panzón', desc: 'Más ancho y con el canto más redondo; guardabarros más marcados.', hood: 0.92, cowl: 1.0, roof: 1.0, roofBack: 1.05, tail: 1.0, nose: 1.0, depth: 1.26, bevel: 0.15, fender: 1.35 },
-  E4: { name: 'Fotos', desc: 'Mi mejor lectura de las fotos: capó bajo, cabina larga, cola parada, un poco más ancho.', hood: 0.86, cowl: 0.93, roof: 1.0, roofBack: 1.14, tail: 0.98, nose: 1.02, depth: 1.2, bevel: 0.14, fender: 1.15 },
-  E5: { name: 'Bajito', desc: 'Techo 6 % más bajo, capó bajo, más ancho: el de picadas.', hood: 0.88, cowl: 0.94, roof: 0.94, roofBack: 1.08, tail: 1.0, nose: 0.97, depth: 1.22, bevel: 0.14, fender: 1.25 },
-};
-const EXTR_DEFAULT = { hood: 1, cowl: 1, roof: 1, roofBack: 1, tail: 1, nose: 1, depth: 1.16, bevel: 0.13, fender: 1 };
+// Parámetros del perfil del casco (los del Fitito de siempre)
+const PERFIL = { hood: 1, cowl: 1, roof: 1, roofBack: 1, tail: 1, nose: 1, depth: 1.16, bevel: 0.13, fender: 1 };
 // Puntos del perfil (x adelante, y alto) según parámetros
-function profilePoints(q = EXTR_DEFAULT) {
+function profilePoints(q = PERFIL) {
   const H = (y) => 0.6 + (y - 0.6) * q.hood, R = (y) => 0.6 + (y - 0.6) * q.roof;
   const rb = q.roofBack, tl = q.tail;
   const pts = [
@@ -80,7 +78,7 @@ function profilePoints(q = EXTR_DEFAULT) {
   ];
   return pts;
 }
-function bodyShape(q = EXTR_DEFAULT) {
+function bodyShape(q = PERFIL) {
   const sh = new THREE.Shape();
   // Fiat 600: capó corto que cae redondo ("trompa de bulldog"), parabrisas parado, cabina alta y larga,
   // luneta empinada y cola panzona (el motor va atrás), sin la caída larga de un Renault 4CV.
@@ -94,52 +92,12 @@ function bodyShape(q = EXTR_DEFAULT) {
   sh.lineTo(1.42 * q.nose, 0.36);
   return sh;
 }
-// Superficie exterior del casco extruido (perfil + bisel), con la misma interfaz que el loft, para ubicar piezas
-const extrCache = {};
-function extrudedFor(key) {
-  if (extrCache[key]) return extrCache[key];
-  const q = { ...EXTR_DEFAULT, ...(EXTRUDED_DESIGNS[key] || {}) };
-  const bT = 0.16, bS = q.bevel;
-  const g = new THREE.ExtrudeGeometry(bodyShape(q), { depth: q.depth, bevelEnabled: true, bevelThickness: bT, bevelSize: bS, bevelSegments: 5, curveSegments: 6 });
-  g.translate(0, 0, -q.depth / 2); g.rotateY(-Math.PI / 2); g.computeVertexNormals();
-  // contorno exterior (perfil desplazado bS hacia afuera), rama superior como función de z
-  const pts = bodyShape(q).getPoints(40);
-  const cx = pts.reduce((a, p) => a + p.x, 0) / pts.length, cy = pts.reduce((a, p) => a + p.y, 0) / pts.length;
-  const outer = [];
-  for (let i = 0; i < pts.length; i++) {
-    const a = pts[(i - 1 + pts.length) % pts.length], b = pts[(i + 1) % pts.length], p = pts[i];
-    const tx = b.x - a.x, ty = b.y - a.y, L = Math.hypot(tx, ty) || 1; let nx = ty / L, ny = -tx / L;
-    if ((p.x - cx) * nx + (p.y - cy) * ny < 0) { nx = -nx; ny = -ny; }
-    if (p.y > 0.45) outer.push({ z: p.x + nx * bS, y: p.y + ny * bS });
-  }
-  outer.sort((a, b) => a.z - b.z);
-  const top = new Map(); for (const o of outer) { const k = Math.round(o.z * 50) / 50; if (!top.has(k) || top.get(k) < o.y) top.set(k, o.y); }
-  const tz = [...top.keys()].sort((a, b) => a - b), ty = tz.map(k => top.get(k));
-  const topY = (z) => { if (z <= tz[0]) return ty[0]; if (z >= tz[tz.length - 1]) return ty[ty.length - 1]; for (let i = 0; i + 1 < tz.length; i++) if (z >= tz[i] && z <= tz[i + 1]) { const t = (z - tz[i]) / (tz[i + 1] - tz[i]); return ty[i] + (ty[i + 1] - ty[i]) * t; } return ty[ty.length - 1]; };
-  const zMin = tz[0], zMax = tz[tz.length - 1];
-  const flank = q.depth / 2 + bT;
-  const api = {
-    topY,
-    surfaceX: (z, y) => { const d = topY(z) - y; if (d >= bS) return flank; const u = Math.max(0, (bS - d) / bS); return q.depth / 2 + bT * Math.sqrt(Math.max(0, 1 - u * u)); },
-    zAtTopY: (y, side) => { if (side > 0) { for (let i = tz.length - 1; i > 0; i--) if (tz[i] > 0.4 && (ty[i] - y) * (ty[i - 1] - y) <= 0) { const t = (y - ty[i]) / ((ty[i - 1] - ty[i]) || 1); return tz[i] + (tz[i - 1] - tz[i]) * t; } return zMax; } for (let i = 0; i + 1 < tz.length; i++) if (tz[i + 1] < -0.6 && (ty[i] - y) * (ty[i + 1] - y) <= 0) { const t = (y - ty[i]) / ((ty[i + 1] - ty[i]) || 1); return tz[i] + (tz[i + 1] - tz[i]) * t; } return zMin; },
-    slopeAt: (z) => { const dz = 0.05; return Math.atan2(topY(z + dz) - topY(z - dz), 2 * dz); },
-    zMin, zMax, design: q,
-  };
-  extrCache[key] = { geometry: g, api, q };
-  return extrCache[key];
-}
 
 let bodyGeoTemplate = null;
-export let customBody = false;
-const loftCache = {};
-// Diseño de casco activo: null = perfil extruido clásico; 'A'..'D' = loft por secciones (js/carroceria.js)
-export let bodyDesign = null;
-export function setBodyDesign(key) { bodyDesign = key && (BODY_DESIGNS[key] || EXTRUDED_DESIGNS[key]) ? key : null; }
-function loftFor(key) { if (!loftCache[key]) loftCache[key] = loftBody(key); return loftCache[key]; }
 
 // Ubicación de vidrios, luces y cromados según la superficie del casco elegido
-function layoutFor(key) {
-  if (!key) return {
+function layoutFor() {
+  return {
     wsh: { y: 1.4, z: 0.56, rot: -0.51 }, rw: { y: 1.37, z: -1.25, rot: Math.PI + 0.69 },
     doorX: 0.735, quarterX: 0.73, flankX: 0.752, numX: 0.748, mirrorX: 0.88,
     head: { z: 1.545, ringZ: 1.6, reflZ: 1.565, bulbZ: 1.59 }, badge: { y: 0.76, z: 1.64, tilt: -0.23 }, park: { z: 1.65 },
@@ -147,43 +105,9 @@ function layoutFor(key) {
     tail: { y: 0.8, z: -1.7 }, lid: { y: 0.98, z: -1.49, rot: Math.PI + 0.62 }, bumperF: 1.69, bumperR: -1.78, plateF: { y: 0.44, z: 1.76 }, plateR: -1.74,
     roofY: 1.575, fenders: true, numY: 0.76, stripeH: { y: 1.228, z: 1.02, rot: 0.19 }, roofStripeY: 1.632, wshW: 1.16, rwW: 1.02, wheelX: 0.64,
   };
-  const ex = EXTRUDED_DESIGNS[key] ? extrudedFor(key) : null;
-  const { api } = ex || loftFor(key);
-  const rotFor = (z) => { const phi = api.slopeAt(z); return Math.atan2(-Math.cos(phi), -Math.sin(phi)); }; // normal de la chapa → rotation.x de un plano
-  const zW = 0.48, zR = api.zAtTopY(1.32, -1);
-  const zHead = api.zAtTopY(0.93, 1) - 0.05, zBadge = api.zAtTopY(0.78, 1), zTail = api.zAtTopY(0.8, -1), zLid = api.zAtTopY(1.02, -1);
-  const zH = 0.95;
-  return {
-    wsh: { y: api.topY(zW) + 0.02, z: zW, rot: rotFor(zW) }, rw: { y: api.topY(zR) + 0.02, z: zR, rot: rotFor(zR) },
-    doorX: api.surfaceX(0.1, 1.17) + 0.012, quarterX: api.surfaceX(-0.6, 1.16) + 0.012, flankX: api.surfaceX(0.0, 0.7) + 0.012, numX: api.surfaceX(-0.02, 0.76) + 0.008, mirrorX: api.surfaceX(0.5, 1.05) + 0.14,
-    head: { z: zHead, ringZ: zHead + 0.055, reflZ: zHead + 0.02, bulbZ: zHead + 0.045 }, badge: { y: 0.78, z: zBadge + 0.02, tilt: -(Math.PI / 2 + api.slopeAt(zBadge)) + Math.PI / 2 }, park: { z: api.zMax - 0.03 },
-    hood: { y: api.topY(zH) + 0.015, z: zH, rot: api.slopeAt(zH), seamF: { y: api.topY(zH + 0.42) + 0.012, z: zH + 0.42, rot: api.slopeAt(zH + 0.42) }, seamB: { y: api.topY(0.64) + 0.012, z: 0.64 }, stripB: { y: api.topY(zH + 0.5) + 0.012, z: zH + 0.5, rot: api.slopeAt(zH + 0.5) } },
-    tail: { y: 0.8, z: zTail - 0.02 }, lid: { y: 1.02, z: zLid, rot: rotFor(zLid) }, bumperF: api.zMax + 0.02, bumperR: api.zMin - 0.02, plateF: { y: 0.44, z: api.zMax + 0.09 }, plateR: api.zMin - 0.04,
-    roofY: api.topY(-0.3) + 0.01, fenders: false, numY: 0.76, stripeH: { y: api.topY(1.0) + 0.012, z: 1.0, rot: api.slopeAt(1.0) }, roofStripeY: api.topY(-0.28) + 0.012,
-    // vidrios tan anchos como el domo a su altura; ruedas metidas bajo el guardabarros
-    wshW: ex ? 1.16 * ex.q.depth / 1.16 : 2 * api.surfaceX(zW, api.topY(zW) - 0.12) - 0.04, rwW: ex ? 1.02 * ex.q.depth / 1.16 : 2 * api.surfaceX(zR, api.topY(zR) - 0.12) - 0.04, wheelX: ex ? 0.64 : api.surfaceX(1.0, 0.45) - 0.07,
-    ...(ex ? { fenders: true, fenderK: ex.q.fender, fenderX: ex.q.depth / 2 + 0.12, mirrorX: ex.q.depth / 2 + 0.3 } : {}),
-  };
 }
-// Casco importado (assets/modelos/fitito.json, generado con herramientas/importar_casco.mjs): reemplaza al perfil extruido.
-export async function loadBodyModel(url) {
-  try {
-    const r = await fetch(url, { cache: 'no-cache' }); if (!r.ok) return false;
-    const d = await r.json(); const k = d.escala || 0.001;
-    const pos = new Float32Array(d.pos.length); for (let i = 0; i < d.pos.length; i++) pos[i] = d.pos[i] * k;
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setIndex(d.idx);
-    g.computeVertexNormals();
-    bodyGeoTemplate = g; customBody = true; return true;
-  } catch (e) { return false; }
-}
-function bodyGeometry(designKey = bodyDesign) {
-  if (designKey && !customBody) {
-    const g = (EXTRUDED_DESIGNS[designKey] ? extrudedFor(designKey) : loftFor(designKey)).geometry.clone();
-    const n = g.attributes.position.count, pos = g.attributes.position, col = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) { const y = pos.getY(i); const shade = y < 0.42 ? 0.62 : y < 0.6 ? 0.62 + (y - 0.42) / 0.18 * 0.3 : 0.92 + Math.min(1, (y - 0.6) / 0.6) * 0.08; col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = shade; }
-    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    return g;
-  }
+
+function bodyGeometry() {
   if (!bodyGeoTemplate) {
     const g = new THREE.ExtrudeGeometry(bodyShape(), { depth: 1.16, bevelEnabled: true, bevelThickness: 0.16, bevelSize: 0.13, bevelSegments: 5, curveSegments: 6 });
     g.translate(0, 0, -0.58);
@@ -233,6 +157,7 @@ function contactShadowMat() {
   g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
   const t = new THREE.CanvasTexture(c);
   _shadowMat = new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false });
+  _shadowMat.userData.compartido = true;
   return _shadowMat;
 }
 
@@ -262,64 +187,87 @@ function dirtify(mat, dirt) {
       .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n { vec3 vd = normalize(vViewPosition); float fres = pow(1.0 - max(dot(vd, normal), 0.0), 3.0); vec3 hv = normalize(vd + normalize(vec3(0.35, 0.9, 0.25))); float spec = pow(max(dot(normal, hv), 0.0), 48.0); diffuseColor.rgb += (fres * 0.09 + spec * 0.28) * (1.0 - uDirt * 0.6); }');
   };
   mat.customProgramCacheKey = () => 'dirt';
+  mat.userData.noFusionar = true; // el barro usa la posicion local de cada pieza
   return mat;
 }
 export function setDirt(cv, v) { cv.dirt.value = v; }
 
-// Detalles que siguen la chapa del casco lofteado: vidrios con marco, ventilete, costuras de puerta, moldura,
-// luces, escudo con bigotes, luces de posición y guiños, espejo, manijas, tomas de aire y número de puerta.
-function buildLoftDetails(loft, spec, vis, addPart, headlights, taillights, numMat) {
-  const api = loft.api, zMax = api.zMax, zMin = api.zMin;
-  const patch = (z0, z1, t0, t1, side, off, mat, nz = 12, nt = 8) => { const m = new THREE.Mesh(surfacePatch(api, z0, z1, t0, t1, side, off, nz, nt), mat); vis.add(m); return m; };
-  const both = (z0, z1, t0, t1, off, mat, nz, nt) => { patch(z0, z1, t0, t1, 1, off, mat, nz, nt); patch(z0, z1, t0, t1, -1, off, mat, nz, nt); };
-  const at = (z, t, side, off = 0.02) => { const p = api.pointAt(z, t, side), n = api.normalAt(z, t, side); return { p: new THREE.Vector3(p[0] + n[0] * off, p[1] + n[1] * off, p[2] + n[2] * off), n: new THREE.Vector3(n[0], n[1], n[2]) }; };
-  const place = (obj, z, t, side, off = 0.02) => { const { p, n } = at(z, t, side, off); obj.position.copy(p); obj.lookAt(p.clone().add(n)); vis.add(obj); return obj; };
-  const frameMat = chromeMat, seamMat = toonMat('#1d130c');
-  // vidrios: marco cromado (un poco más grande, pegado) y vidrio encima
-  const glass = (z0, z1, t0, t1, sides) => { for (const sd of sides) { patch(z0 - 0.03, z1 + 0.03, Math.max(0, t0 - 0.025), t1 + 0.025, sd, 0.004, frameMat); patch(z0, z1, t0, t1, sd, 0.008, glassMat); } };
-  glass(0.37, 0.6, 0.0, 0.37, [1, -1]);          // parabrisas
-  glass(zMin + 0.36, zMin + 0.64, 0.0, 0.36, [1, -1]); // luneta
-  glass(-0.36, 0.44, 0.17, 0.43, [1, -1]);        // ventanilla de puerta
-  glass(-0.84, -0.47, 0.19, 0.41, [1, -1]);       // custodia
-  both(0.2, 0.225, 0.17, 0.43, 0.011, frameMat, 2, 6); // ventilete
-  // costuras de la puerta y moldura cromada del cinturón
-  both(0.5, 0.515, 0.1, 0.96, 0.005, seamMat, 2, 12); both(-0.53, -0.515, 0.1, 0.96, 0.005, seamMat, 2, 12);
-  both(-0.52, 0.51, 0.95, 0.965, 0.005, seamMat, 12, 2); both(-0.52, 0.51, 0.44, 0.455, 0.005, seamMat, 12, 2);
-  both(zMin + 0.45, zMax - 0.45, 0.63, 0.65, 0.008, frameMat, 24, 2);
-  // tira del capó y costura del baúl
-  both(0.66, zMax - 0.1, 0.0, 0.012, 0.008, frameMat, 16, 2);
-  both(zMax - 0.1, zMax - 0.085, 0.0, 0.42, 0.005, seamMat, 2, 8); both(0.63, 0.645, 0.0, 0.4, 0.005, seamMat, 2, 8);
-  // franjas de carrera
-  if (spec.stripes) { const sm = toonMat(spec.stripeColor || '#fff8e6'); both(-0.75, 0.3, 0.04, 0.11, 0.009, sm, 16, 3); both(0.66, zMax - 0.14, 0.04, 0.12, 0.009, sm, 12, 3); }
-  // faros: reflector, lamparita, lente y aro, sobre la trompa
-  for (const sd of [-1, 1]) {
-    const zH = zMax - 0.3, tH = 0.28;
-    place(new THREE.Mesh(new THREE.CircleGeometry(0.13, 16), chromeMat), zH, tH, sd, 0.012);
-    place(new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), lightOn), zH, tH, sd, 0.04);
-    const hl = place(new THREE.Mesh(new THREE.SphereGeometry(0.15, 14, 12), lensMat), zH, tH, sd, -0.02); hl.scale.z = 0.72; headlights.push(hl);
-    place(new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.025, 6, 18), chromeMat), zH, tH, sd, 0.05);
-    // luces de posición y guiños
-    place(new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), toonMat('#fff2d0', { emissive: '#8a7a40', emissiveIntensity: 0.3 })), zMax - 0.06, 0.62, sd, 0.0).scale.z = 0.6;
-    place(new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.014, 6, 12), chromeMat), zMax - 0.06, 0.62, sd, 0.03);
-    place(new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), toonMat('#ffb340', { emissive: '#7a4a00', emissiveIntensity: 0.4 })), 1.05, 0.5, sd, 0.0);
-    // luces traseras y reflector
-    const tl = place(new THREE.Mesh(new THREE.SphereGeometry(0.085, 10, 8), tailOff), zMin + 0.2, 0.33, sd, 0.0); tl.scale.z = 0.6; tl.castShadow = false; taillights.push(tl);
-    place(new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.02, 6, 12), chromeMat), zMin + 0.2, 0.33, sd, 0.04);
-    place(new THREE.Mesh(new THREE.CircleGeometry(0.035, 10), toonMat('#b02020')), zMin + 0.08, 0.6, sd, 0.008);
-    // número de puerta, manija, tomas de aire del motor
-    place(new THREE.Mesh(new THREE.CircleGeometry(0.25, 24), numMat), -0.02, 0.62, sd, 0.01);
-    place(box(0.16, 0.04, 0.03, chromeMat), 0.42, 0.5, sd, 0.02);
-    place(box(0.22, 0.16, 0.08, darkMat), -0.93, 0.34, sd, 0.0);
-    place(box(0.06, 0.18, 0.05, chromeMat), -0.83, 0.34, sd, 0.03);
+// Libera la memoria de video de un auto: geometrias propias y materiales que no son compartidos
+// (carroceria, guardabarros, llantas, numero, patente, techo, franjas, piloto).
+export function disposeCarVisual(cv) {
+  const vistas = new Set();
+  cv.root.traverse(o => {
+    if (o.geometry) vistas.add(o.geometry);
+    const mats = Array.isArray(o.material) ? o.material : (o.material ? [o.material] : []);
+    for (const m of mats) {
+      if (m.userData.compartido) continue;
+      for (const k of ['map', 'normalMap', 'roughnessMap', 'alphaMap', 'emissiveMap', 'aoMap']) if (m[k] && !m[k].userData.compartido) m[k].dispose();
+      m.dispose();
+    }
+  });
+  for (const p of cv.parts) if (!p.attached) { if (p.mesh.geometry) vistas.add(p.mesh.geometry); }
+  for (const g of vistas) g.dispose();
+}
+
+// Fusiona en una sola malla por material todas las piezas fijas del auto (cromados, costuras, vidrios,
+// numeros, detalles). Baja de ~144 mallas por auto a ~25, que es lo que decide el costo de dibujar 20 autos.
+// Quedan aparte: la carroceria (se abolla), las ruedas (giran), las luces (cambian de material) y las piezas
+// que se desprenden con los golpes.
+function matrizRelativa(obj, tope) {
+  const cadena = [];
+  for (let p = obj; p && p !== tope; p = p.parent) cadena.push(p);
+  const m = new THREE.Matrix4();
+  for (let i = cadena.length - 1; i >= 0; i--) { cadena[i].updateMatrix(); m.multiply(cadena[i].matrix); }
+  return m;
+}
+function fusionable(m) {
+  const g = m.geometry;
+  return !Array.isArray(m.material) && !m.material.userData.noFusionar
+    && g.attributes.position && g.attributes.normal && g.attributes.uv;
+}
+// Fusiona las piezas fijas de un contenedor (vis o un grupo) en una malla por material. Devuelve las creadas.
+function fusionarEn(cont, protegidos) {
+  const porMaterial = new Map();
+  const quitar = [];
+  const creadas = [];
+  for (const hijo of cont.children) {
+    if (protegidos.has(hijo)) continue;
+    const piezas = [];
+    let apto = true;
+    hijo.traverse(o => {
+      if (protegidos.has(o)) apto = false;
+      else if (o.isMesh) piezas.push(o);
+      else if (o !== hijo && !o.isGroup) apto = false;
+    });
+    if (!apto || !piezas.length) continue;
+    // grupo con alguna pieza que no se puede fusionar (barro): se fusiona por dentro y el grupo queda
+    if (!piezas.every(fusionable)) {
+      if (hijo.isGroup && piezas.some(fusionable)) creadas.push(...fusionarEn(hijo, protegidos));
+      continue;
+    }
+    for (const m of piezas) {
+      let g = m.geometry;
+      g = g.index ? g.toNonIndexed() : g.clone();
+      for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal' && k !== 'uv') g.deleteAttribute(k);
+      g.morphAttributes = {};
+      g.applyMatrix4(matrizRelativa(m, cont));
+      const e = porMaterial.get(m.material) || { geos: [], sombra: false };
+      e.geos.push(g); e.sombra = e.sombra || m.castShadow;
+      porMaterial.set(m.material, e);
+    }
+    quitar.push(hijo);
   }
-  // escudo y bigotes cromados
-  const badge = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.03, 14), toonMat('#c8342a')); badge.geometry.rotateX(Math.PI / 2); place(badge, zMax - 0.14, 0.0, 1, 0.01);
-  place(new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.014, 6, 14), chromeMat), zMax - 0.14, 0.0, 1, 0.025);
-  for (const sd of [-1, 1]) for (const [tt, len] of [[0.12, 0.3], [0.2, 0.26]]) place(box(len, 0.022, 0.03, chromeMat), zMax - 0.15, tt, sd, 0.012);
-  // espejo en la puerta del piloto, con brazo
-  const { p: mp, n: mn } = at(0.5, 0.3, 1, 0.14);
-  const mirror = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.03, 12), chromeMat); mirror.rotation.z = Math.PI / 2; mirror.position.copy(mp); addPart(mirror, 'left', 0.35);
-  const arm = box(0.14, 0.02, 0.02, chromeMat); arm.position.copy(mp.clone().sub(mn.clone().multiplyScalar(0.07))); arm.lookAt(mp.clone().add(mn)); arm.rotateY(Math.PI / 2); vis.add(arm);
+  if (!porMaterial.size) return creadas;
+  for (const h of quitar) cont.remove(h);
+  for (const [mat, e] of porMaterial) {
+    const g = e.geos.length === 1 ? e.geos[0] : mergeGeometries(e.geos, false);
+    if (!g) { for (const gg of e.geos) gg.dispose(); continue; }
+    if (g !== e.geos[0]) for (const gg of e.geos) gg.dispose();
+    const malla = new THREE.Mesh(g, mat);
+    malla.castShadow = e.sombra; malla.receiveShadow = false;
+    cont.add(malla); creadas.push(malla);
+  }
+  return creadas;
 }
 
 export function createCarVisual(spec) {
@@ -330,10 +278,8 @@ export function createCarVisual(spec) {
   root.add(vis);
   const dirt = { value: 0 };
   const bodyMat = dirtify(toonMat(spec.color, { vertexColors: true }), dirt);
-  const design = spec.body !== undefined ? (spec.body && (BODY_DESIGNS[spec.body] || EXTRUDED_DESIGNS[spec.body]) ? spec.body : null) : bodyDesign;
-  const L = layoutFor(customBody ? null : design);
-  const loft = (design && !customBody && BODY_DESIGNS[design]) ? loftFor(design) : null;
-  const geo = bodyGeometry(design);
+  const L = layoutFor();
+  const geo = bodyGeometry();
   const body = new THREE.Mesh(geo, bodyMat);
   body.castShadow = true;
   vis.add(body);
@@ -363,7 +309,7 @@ export function createCarVisual(spec) {
   }
 
   // vidrios: parabrisas corto y parado, luneta que cae, ventanillas de puerta y custodia
-  if (!loft) {
+  {
   // parabrisas y luneta grandes, de esquinas redondeadas y marco cromado, por fuera del bisel del casco
   const wsh = glassPane(L.wshW, 0.44, 0.1); wsh.position.set(0, L.wsh.y, L.wsh.z); wsh.rotation.x = L.wsh.rot; vis.add(wsh);
   const rw = glassPane(L.rwW, 0.42, 0.12); rw.position.set(0, L.rw.y, L.rw.z); rw.rotation.x = L.rw.rot; vis.add(rw);
@@ -378,7 +324,7 @@ export function createCarVisual(spec) {
     const h = box(0.03, 0.04, 0.16, chromeMat); h.position.set(sx * (L.flankX + 0.01), 0.88, 0.42); vis.add(h);
   }
   }
-  if (!loft) {
+  {
   // moldura cromada lateral, filete de la puerta y bisagras (puerta suicida, abre hacia adelante)
   for (const sx of [-1, 1]) {
     const strip = box(0.02, 0.03, 2.4, chromeMat); strip.position.set(sx * L.flankX, 0.62, 0.05); vis.add(strip);
@@ -389,14 +335,14 @@ export function createCarVisual(spec) {
     const seamT = box(0.015, 0.025, 0.98, darkMat); seamT.position.set(sx * L.flankX, 0.99, -0.02); vis.add(seamT);
     for (const hy of [0.62, 0.95]) { const hinge = box(0.03, 0.08, 0.04, chromeMat); hinge.position.set(sx * (L.flankX + 0.01), hy, -0.5); vis.add(hinge); }
     // guinos ambar bajo los faros
-    const blink = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), toonMat('#ffb340', { emissive: '#7a4a00', emissiveIntensity: 0.4 })); blink.position.set(sx * (L.flankX - 0.01), 0.86, 1.15); vis.add(blink);
+    const blink = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), blinkMat); blink.position.set(sx * (L.flankX - 0.01), 0.86, 1.15); vis.add(blink);
     // luces de posición redondas junto al paragolpes
-    const park = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), toonMat('#fff2d0', { emissive: '#8a7a40', emissiveIntensity: 0.3 })); park.position.set(sx * 0.45, 0.6, L.park.z); park.scale.z = 0.6; vis.add(park);
+    const park = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), parkMat); park.position.set(sx * 0.45, 0.6, L.park.z); park.scale.z = 0.6; vis.add(park);
     const parkRing = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.014, 6, 12), chromeMat); parkRing.position.set(sx * 0.45, 0.6, L.park.z + 0.02); vis.add(parkRing);
   }
   // limpiaparabrisas y espejo interior
   }
-  if (!loft) {
+  {
   // limpiaparabrisas apoyados en la base del parabrisas y espejo interior colgado de su borde superior
   const wshTop = { y: L.wsh.y + 0.19 * Math.cos(L.wsh.rot), z: L.wsh.z + 0.19 * Math.sin(-L.wsh.rot) };
   const wshBase = { y: L.wsh.y - 0.2 * Math.cos(L.wsh.rot), z: L.wsh.z - 0.2 * Math.sin(-L.wsh.rot) };
@@ -404,22 +350,23 @@ export function createCarVisual(spec) {
   const innerMirror = box(0.2, 0.05, 0.02, darkMat); innerMirror.position.set(0, wshTop.y - 0.08, wshTop.z - 0.12); vis.add(innerMirror);
   }
   // piloto (cabeza con casco y torso), volante a la izquierda
-  const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), toonMat(spec.helmetColor || '#e2a33b'));
+  const pilotoMat = toonMat(spec.helmetColor || '#e2a33b');
+  const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), pilotoMat);
   helmet.position.set(0.3, 1.14, 0.0); vis.add(helmet);
   const visor = box(0.2, 0.09, 0.06, darkMat); visor.position.set(0.3, 1.14, 0.15); vis.add(visor);
-  const torso = box(0.36, 0.3, 0.26, toonMat(spec.helmetColor || '#e2a33b')); torso.position.set(0.3, 0.88, -0.05); torso.castShadow = false; vis.add(torso);
+  const torso = box(0.36, 0.3, 0.26, pilotoMat); torso.position.set(0.3, 0.88, -0.05); torso.castShadow = false; vis.add(torso);
   const wheelRim = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.018, 6, 14), darkMat); wheelRim.position.set(0.3, 1.02, 0.28); wheelRim.rotation.x = 0.4; vis.add(wheelRim);
 
   // guardabarros abultados alrededor de las ruedas (color carrocería)
   const fenderMat = dirtify(toonMat(spec.color), dirt);
   const FX = L.fenderX || 0.7, FK = L.fenderK || 1;
-  for (const [fx, fz] of (customBody || !L.fenders) ? [] : [[FX, 1.0], [-FX, 1.0], [FX, -1.0], [-FX, -1.0]]) {
+  for (const [fx, fz] of [[FX, 1.0], [-FX, 1.0], [FX, -1.0], [-FX, -1.0]]) {
     const f = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), fenderMat); if (fz > 0) f.scale.set(0.05 * FK, 0.24, 0.44); else f.scale.set(0.1 * FK, 0.28, 0.48); f.position.set(fx, 0.6, fz); f.castShadow = true; vis.add(f); // adelante casi plano, atrás un bulto discreto
     const fo = new THREE.Mesh(f.geometry, outline); fo.position.copy(f.position); fo.scale.copy(f.scale); vis.add(fo);
   }
   // faros redondos sobre los guardabarros
   const headlights = [], taillights = [];
-  if (!loft) for (const sx of [-1, 1]) {
+  for (const sx of [-1, 1]) {
     // faros redondos grandes, altos sobre los guardabarros, con aro cromado
     // óptica: reflector cromado, lamparita y lente de vidrio transparente, con aro cromado
     const refl = new THREE.Mesh(new THREE.CircleGeometry(0.13, 16), chromeMat); refl.position.set(sx * 0.5, 0.93, L.head.reflZ); vis.add(refl);
@@ -432,12 +379,12 @@ export function createCarVisual(spec) {
     tl.position.set(sx * 0.55, L.tail.y, L.tail.z); tl.castShadow = false; vis.add(tl); taillights.push(tl); // por fuera del bisel del casco
     const tring = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.02, 6, 12), chromeMat); tring.position.set(sx * 0.55, L.tail.y, L.tail.z - 0.03); vis.add(tring);
     // reflector rojo chico debajo
-    const rrefl = new THREE.Mesh(new THREE.CircleGeometry(0.035, 10), toonMat('#b02020')); rrefl.position.set(sx * 0.5, 0.62, L.bumperR + 0.06); rrefl.rotation.y = Math.PI; vis.add(rrefl);
+    const rrefl = new THREE.Mesh(new THREE.CircleGeometry(0.035, 10), reflMat); rrefl.position.set(sx * 0.5, 0.62, L.bumperR + 0.06); rrefl.rotation.y = Math.PI; vis.add(rrefl);
   }
   // insignia y bigote cromado
-  if (!loft) {
+  {
   // escudo FIAT al centro con bigotes cromados a los lados, y tira cromada por el medio del capó
-  const badge = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.03, 14), toonMat('#c8342a')); badge.rotation.x = Math.PI / 2 + L.badge.tilt; badge.position.set(0, L.badge.y, L.badge.z); vis.add(badge);
+  const badge = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.03, 14), badgeMat); badge.rotation.x = Math.PI / 2 + L.badge.tilt; badge.position.set(0, L.badge.y, L.badge.z); vis.add(badge);
   const badgeRing = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.014, 6, 14), chromeMat); badgeRing.rotation.x = L.badge.tilt; badgeRing.position.set(0, L.badge.y, L.badge.z + 0.01); vis.add(badgeRing);
   for (const sx of [-1, 1]) for (const [dy, len] of [[0.045, 0.3], [-0.03, 0.26]]) { const wk = box(len, 0.022, 0.03, chromeMat); wk.rotation.x = L.badge.tilt; wk.position.set(sx * (0.12 + len / 2), L.badge.y + dy, L.badge.z - 0.005 - dy * 0.25); vis.add(wk); }
   // tapa del baúl (adelante): tira cromada por el medio y costura en U
@@ -450,14 +397,13 @@ export function createCarVisual(spec) {
   }
   // tapa del motor: junta oscura alrededor, rejilla de lamas en un hueco y manija cromada
   const lid = new THREE.Group(); lid.position.set(0, L.lid.y, L.lid.z); lid.rotation.x = L.lid.rot;
-  const seam = new THREE.Mesh(new THREE.ShapeGeometry(roundedRect(1.0, 0.58, 0.11)), toonMat('#1d130c')); seam.position.z = 0.005; lid.add(seam);
+  const seam = new THREE.Mesh(new THREE.ShapeGeometry(roundedRect(1.0, 0.58, 0.11)), seamMat); seam.position.z = 0.005; lid.add(seam);
   const lidPanel = new THREE.Mesh(new THREE.ShapeGeometry(roundedRect(0.9, 0.48, 0.09)), fenderMat); lidPanel.position.z = 0.012; lid.add(lidPanel);
   // parrilla ancha de lamas cromadas (la marca registrada de la cola del 600)
   const grille = new THREE.Mesh(new THREE.ShapeGeometry(roundedRect(0.7, 0.28, 0.05)), darkMat); grille.position.set(0, -0.06, 0.02); lid.add(grille);
   for (let i = 0; i < 7; i++) { const slat = box(0.66, 0.02, 0.02, chromeMat); slat.position.set(0, -0.18 + i * 0.04, 0.03); lid.add(slat); }
   const lidHandle = box(0.14, 0.03, 0.03, chromeMat); lidHandle.position.set(0, 0.18, 0.03); lid.add(lidHandle);
   const emblem = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.065), new THREE.MeshToonMaterial({ map: plateTexture('600'), gradientMap: toonGradient() })); emblem.position.set(-0.3, 0.18, 0.03); emblem.rotation.z = Math.PI; lid.add(emblem);
-  if (loft) { const q = loft.api.pointAt(L.lid.z, 0, 1), n = loft.api.normalAt(L.lid.z, 0.02, 1); lid.position.set(0, q[1] + n[1] * 0.006, q[2] + n[2] * 0.006); lid.rotation.set(0, 0, 0); lid.lookAt(0, q[1] + n[1], q[2] + n[2]); lid.rotateZ(Math.PI); }
   vis.add(lid);
   // luz de patente y caño de escape
   const plateLamp = box(0.14, 0.05, 0.08, chromeMat); plateLamp.position.set(0, 0.6, L.plateR); vis.add(plateLamp);
@@ -469,7 +415,7 @@ export function createCarVisual(spec) {
   addPart(mkBumper(L.bumperF), 'front', 0.55);
   addPart(mkBumper(L.bumperR), 'rear', 0.55);
   // espejo
-  if (!loft) {
+  {
   const mirror = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.03, 12), chromeMat); mirror.rotation.z = Math.PI / 2; mirror.position.set(L.mirrorX, 1.06, 0.5); addPart(mirror, 'left', 0.35);
   const mirrorArm = box(0.16, 0.02, 0.02, chromeMat); mirrorArm.position.set(L.mirrorX - 0.08, 1.02, 0.5); mirrorArm.rotation.z = 0.35; vis.add(mirrorArm);
   }
@@ -479,11 +425,10 @@ export function createCarVisual(spec) {
   // números
   const numTex = numberTexture(spec.number);
   const numMat = new THREE.MeshToonMaterial({ map: numTex, gradientMap: toonGradient(), transparent: true });
-  if (!loft) for (const sx of [-1, 1]) {
+  for (const sx of [-1, 1]) {
     const nm = new THREE.Mesh(new THREE.CircleGeometry(0.25, 24), numMat);
     nm.position.set(sx * L.numX, L.numY, -0.02); nm.rotation.y = sx * Math.PI / 2; vis.add(nm);
   }
-  if (loft) buildLoftDetails(loft, spec, vis, addPart, headlights, taillights, numMat);
   const nh = new THREE.Mesh(new THREE.CircleGeometry(0.24, 24), numMat);
   nh.position.set(0, L.stripeH.y + 0.004, 1.0); nh.rotation.x = -Math.PI / 2 + L.stripeH.rot; vis.add(nh);
 
@@ -513,7 +458,7 @@ export function createCarVisual(spec) {
   }
 
   // ruedas chicas con tazas grandes
-  const wheels = [];
+  const wheels = [], adornos = [];
   const wheelGeo = new THREE.CylinderGeometry(0.29, 0.29, 0.19, 16);
   const rimGeo = new THREE.CylinderGeometry(0.19, 0.19, 0.03, 14);
   const wwGeo = new THREE.TorusGeometry(0.235, 0.028, 6, 18);
@@ -524,15 +469,24 @@ export function createCarVisual(spec) {
     const tire = new THREE.Mesh(wheelGeo, tireMat); tire.rotation.z = Math.PI / 2; tire.castShadow = true;
     const spin = new THREE.Group(); spin.add(tire);
     const rim = new THREE.Mesh(rimGeo, rimMat); rim.rotation.z = Math.PI / 2; rim.position.x = Math.sign(x) * 0.095; spin.add(rim);
-    if (spec.whitewall !== false) { const ww = new THREE.Mesh(wwGeo, whitewallMat); ww.rotation.y = Math.PI / 2; ww.position.x = Math.sign(x) * 0.1; spin.add(ww); }
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), chromeMat); dome.scale.set(0.35, 1, 1); dome.position.x = Math.sign(x) * 0.11; spin.add(dome);
-    const ol = new THREE.Mesh(wheelGeo, outline); ol.rotation.z = Math.PI / 2; spin.add(ol);
+    if (spec.whitewall !== false) { const ww = new THREE.Mesh(wwGeo, whitewallMat); ww.rotation.y = Math.PI / 2; ww.position.x = Math.sign(x) * 0.1; spin.add(ww); adornos.push(ww); }
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), chromeMat); dome.scale.set(0.35, 1, 1); dome.position.x = Math.sign(x) * 0.11; spin.add(dome); adornos.push(dome);
+    const ol = new THREE.Mesh(wheelGeo, outline); ol.rotation.z = Math.PI / 2; spin.add(ol); adornos.push(ol);
     w.add(spin); vis.add(w);
     wheels.push({ group: w, spin, steer, side: Math.sign(x) });
   }
 
+  // fusion de piezas fijas (no toca carroceria, ruedas, luces ni piezas desprendibles)
+  const protegidos = new Set([body, ...parts.map(p => p.mesh), ...headlights, ...taillights, ...wheels.map(w => w.group)]);
+  for (const o of vis.children) if (o.isMesh && o.material === outline && o.geometry === geo) protegidos.add(o);
+  const fusionadas = fusionarEn(vis, protegidos);
+  // nivel de detalle: de lejos se ocultan cromados, costuras, piloto, paragolpes y adornos de rueda.
+  // Quedan siempre la carroceria, las ruedas, los vidrios, las luces y el numero.
+  const lod = fusionadas.filter(m => m.material !== glassMat && m.material !== numMat)
+    .concat(adornos, parts.map(p => p.mesh));
+
   return {
-    root, vis, body, bodyMat, geo, orig, origCol, parts, headlights, taillights, wheels, spec, shadowBlob, dirt,
+    root, vis, body, bodyMat, geo, orig, origCol, parts, headlights, taillights, wheels, spec, shadowBlob, dirt, lod, lodCerca: true,
     colorAttr: geo.attributes.color, smokeAnchor: new THREE.Vector3(0, 1.1, -1.35), exhaustAnchor: new THREE.Vector3(-0.42, 0.38, -1.88), braking: false,
     deformTotal: 0, wobble: 0,
   };

@@ -89,10 +89,16 @@ export class Multiplayer {
     const rnd = mulberry32(seed);
     const used = new Set();
     const localId = this.net.role === 'host' ? 'host' : this.net.myId; // quién soy yo en esta máquina
+    // El resto del juego indexa a los pilotos por nombre (grilla, resultados, tiempos), asi que dos
+    // personas con el mismo nombre se pisaban y corrian un solo auto: aca se desempatan.
+    const nombres = new Set();
     const roster = players.map((p, i) => {
       const spec = p.spec || {};
       let num = spec.number || 7; while (used.has(num)) num = 1 + Math.floor(rnd() * 99); used.add(num);
-      return { name: p.name || `Jugador ${i + 1}`, isPlayer: p.id === localId, isHuman: true, netId: p.id, color: spec.color || LIVERY_COLORS[i], roofColor: spec.roofColor || spec.color, number: num, accessory: spec.accessory || 'none', stripes: !!spec.stripes, helmetColor: '#e2a33b', skill: 1, aggression: 0.5, seed: 1 + i };
+      let nombre = (p.name || '').trim() || `Jugador ${i + 1}`;
+      if (nombres.has(nombre)) { let k = 2; while (nombres.has(`${nombre} ${k}`)) k++; nombre = `${nombre} ${k}`; }
+      nombres.add(nombre);
+      return { name: nombre, isPlayer: p.id === localId, isHuman: true, netId: p.id, color: spec.color || LIVERY_COLORS[i], roofColor: spec.roofColor || spec.color, number: num, accessory: spec.accessory || 'none', stripes: !!spec.stripes, helmetColor: '#e2a33b', skill: 1, aggression: 0.5, seed: 1 + i };
     });
     return roster;
   }

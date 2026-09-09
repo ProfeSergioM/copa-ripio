@@ -464,9 +464,18 @@ function makeCheckerTexture() {
 
 // Foto de grava con normales (Poly Haven, CC0). La cinta mide 16 m de ancho por 8 m de repetición: 2 baldosas a lo ancho.
 const _loader = new THREE.TextureLoader();
+// Las fotos se cargan una sola vez y se comparten entre mundos (antes se bajaban y quedaban colgadas en cada fecha)
+const _fotos = new Map();
+function foto(url, cb) {
+  const t = _fotos.get(url);
+  if (t) { if (t.image) cb(t); else t.addEventListener('load', () => cb(t)); return; }
+  const nueva = _loader.load(url, (x) => { x.userData.compartido = true; cb(x); }, undefined, () => {});
+  nueva.userData.compartido = true;
+  _fotos.set(url, nueva);
+}
 function loadTrackTextures(mat, wet, mudCanvas) {
   // la foto de grava (detalle fino) se multiplica sobre el lodo procedural (manchas, huellas, charcos)
-  _loader.load('assets/texturas/grava_color.jpg', (t) => {
+  foto('assets/texturas/grava_color.jpg', (t) => {
     const img = t.image; if (!img || !mudCanvas) return;
     const c = document.createElement('canvas'); c.width = mudCanvas.width; c.height = mudCanvas.height;
     const g = c.getContext('2d');
@@ -475,7 +484,8 @@ function loadTrackTextures(mat, wet, mudCanvas) {
     const tile = c.height; for (let x = 0; x < c.width; x += tile) g.drawImage(img, x, 0, tile, tile);
     g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
     const tex = new THREE.CanvasTexture(c); tex.wrapS = THREE.ClampToEdgeWrapping; tex.wrapT = THREE.RepeatWrapping; tex.anisotropy = 8; tex.colorSpace = THREE.SRGBColorSpace;
+    if (mat.map && mat.map !== tex) mat.map.dispose(); // el lodo procedural ya no se usa
     mat.map = tex; mat.color.set(wet ? '#d8ccb8' : '#fff0dc'); mat.needsUpdate = true;
-  }, undefined, () => {});
-  _loader.load('assets/texturas/grava_normal.jpg', (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 1); t.anisotropy = 8; mat.normalMap = t; mat.normalScale.set(0.7, 0.7); mat.needsUpdate = true; }, undefined, () => {});
+  });
+  foto('assets/texturas/grava_normal.jpg', (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 1); t.anisotropy = 8; mat.normalMap = t; mat.normalScale.set(0.7, 0.7); mat.needsUpdate = true; });
 }

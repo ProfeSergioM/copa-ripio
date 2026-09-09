@@ -30,7 +30,17 @@ export class World {
 
   dispose() {
     this.scene.remove(this.group);
-    this.group.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+    // geometrias, materiales y texturas de este mundo; los materiales compartidos (los del auto) no se tocan
+    this.group.traverse(o => {
+      if (o.geometry) o.geometry.dispose();
+      const mats = Array.isArray(o.material) ? o.material : (o.material ? [o.material] : []);
+      for (const m of mats) {
+        if (m.userData.compartido) continue;
+        for (const k of ['map', 'normalMap', 'roughnessMap', 'alphaMap', 'emissiveMap', 'aoMap']) if (m[k] && !m[k].userData.compartido) m[k].dispose();
+        m.dispose();
+      }
+    });
+    if (this.track && this.track.marks) { this.track.marks.texture.dispose(); this.track.marks = null; }
     if (this.rain) { this.rain.dispose(); this.rain = null; }
     this.animated.length = 0; this.flags.length = 0; this.lamps.length = 0; this.tvSpots.length = 0;
   }
@@ -162,8 +172,8 @@ export class World {
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, map: grassTex, roughness: 1, metalness: 0 });
     // foto de pasto con normales (Poly Haven, CC0); si no carga queda la textura dibujada
     const rx = (w - 1) * hf.cell / 11, rz = (d - 1) * hf.cell / 11;
-    loadTex('assets/texturas/pasto_color.jpg', true, rx, rz, (tx) => { mat.map = tx; mat.needsUpdate = true; });
-    loadTex('assets/texturas/pasto_normal.jpg', false, rx, rz, (tx) => { mat.normalMap = tx; mat.normalScale.set(0.7, 0.7); mat.needsUpdate = true; });
+    loadTex('assets/texturas/pasto_color.jpg', true, rx, rz, (tx) => { if (mat.map && mat.map !== tx && !mat.map.userData.compartido) mat.map.dispose(); mat.map = tx; mat.needsUpdate = true; });
+    loadTex('assets/texturas/pasto_normal.jpg', false, rx, rz, (tx) => { if (mat.normalMap && mat.normalMap !== tx && !mat.normalMap.userData.compartido) mat.normalMap.dispose(); mat.normalMap = tx; mat.normalScale.set(0.7, 0.7); mat.needsUpdate = true; });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(cx, 0, cz); mesh.receiveShadow = true;
     this.terrain = this.add(mesh);
@@ -704,16 +714,27 @@ function makeGrassTexture(wet) {
 }
 
 // Textura radial para el destello del sol
+const _flares = new Map();
 function flareTexture(size, color, hard) {
+  const clave = size + color + hard;
+  if (_flares.has(clave)) return _flares.get(clave);
   const c = document.createElement('canvas'); c.width = c.height = size;
   const g = c.getContext('2d');
   const grad = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
   grad.addColorStop(0, color); grad.addColorStop(0.2 * hard + 0.05, color); grad.addColorStop(1, 'rgba(0,0,0,0)');
   g.fillStyle = grad; g.fillRect(0, 0, size, size);
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.userData.compartido = true;
+  _flares.set(clave, t); return t;
 }
 
 const _texLoader = new THREE.TextureLoader();
+// Cada foto se carga una vez y se comparte entre mundos (no se libera al cambiar de fecha)
+const _fotosMundo = new Map();
 export function loadTex(url, srgb, rx, ry, onLoad) {
-  _texLoader.load(url, (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); t.anisotropy = 8; if (srgb) t.colorSpace = THREE.SRGBColorSpace; onLoad(t); }, undefined, () => {});
+  const listo = (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); t.anisotropy = 8; if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.userData.compartido = true; onLoad(t); };
+  const y = _fotosMundo.get(url);
+  if (y) { if (y.image) listo(y); else y.addEventListener('load', () => listo(y)); return; }
+  const t = _texLoader.load(url, listo, undefined, () => {});
+  t.userData.compartido = true;
+  _fotosMundo.set(url, t);
 }

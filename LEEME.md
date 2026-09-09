@@ -160,31 +160,38 @@ Fuera del ripio van despacio (9 m/s en la zanja) para poder salir, y un auto per
 5–6 s vuelve al borde de la pista. Se calibra con `herramientas/solo2.mjs` (un auto) y `herramientas/fuera.mjs`
 (20 autos: segundos fuera de pista por vuelta y por sector; `DIF=1.14 CIRCUITO=ovalo REVERSE=1 DIAG=1`).
 
-## Casco generado con ComfyUI (opcional)
+## Rendimiento
 
-El juego puede usar una malla externa como casco: si existe `assets/modelos/fitito.json` la carga al iniciar
-(`loadBodyModel` en `js/car.js`) y no dibuja los guardabarros esféricos; si no existe, usa el perfil extruido.
-Flujo con Comfy Desktop e Hunyuan3D 2 (imagen → 3D, malla sin textura, que se pinta con el toon del juego):
+Dibujar 20 autos era el 87 % del costo de cada cuadro: cada Fitito se armaba con 144 mallas sueltas
+(cromados, costuras, molduras, lamas), o sea unas 2600 llamadas de dibujo por cuadro. Dos cambios, sin tocar
+el aspecto:
 
-1. Comfy Desktop instalado y abierto (API en `http://127.0.0.1:8188`), con el modelo
-   `models/checkpoints/hunyuan3d-dit-v2.safetensors` (de `tencent/Hunyuan3D-2`, carpeta `hunyuan3d-dit-v2-0`,
-   archivo `model.fp16.safetensors`, ~5 GB; necesita unos 6 GB de VRAM).
-2. Una foto de referencia con fondo liso en `assets/referencias/`.
-3. `node herramientas/comfy_fitito.mjs assets/referencias/foto.jpg` → deja `assets/modelos/fitito_raw.glb`.
-4. `node herramientas/importar_casco.mjs assets/modelos/fitito_raw.glb [--giro 180] [--espejo]` → centra, escala a
-   3,2 m, apoya en el piso, saca las ruedas (el juego pone las suyas) y guarda `assets/modelos/fitito.json`.
+- **Fusión por material** (`fusionarEn` en `js/car.js`): las piezas fijas se juntan en una malla por material
+  al crear el auto. Quedan aparte la carrocería (se abolla), las ruedas (giran), las luces (cambian de
+  material) y las piezas que se desprenden.
+- **Nivel de detalle por distancia** (`js/race.js`): más allá de 30 m se ocultan cromados, paragolpes, piloto y
+  tazas; siguen la carrocería, las ruedas, los vidrios, las luces y el número. El auto propio nunca se simplifica.
+  Un rival a menos de 2,4 m de la cámara no se dibuja (tapaba la pantalla en la largada).
+
+Medido a 1280×720 con 20 autos: de 2587 a unas 520 llamadas y de 28,7 a 15,8 ms por cuadro. La lógica
+(física, IA, audio) cuesta 1 ms, así que el resto era todo dibujo.
+
+## Memoria
+
+`World.dispose()` y `Race.dispose()` liberan geometrías, materiales y texturas propias. Los materiales de
+módulo (los que comparten todos los autos) y las fotos llevan `userData.compartido` y no se tocan; las fotos
+se cargan una sola vez y se reutilizan entre fechas. Antes cada fecha dejaba 17 texturas colgadas y el
+montón de JavaScript crecía de 77 a 165 MB en tres reconstrucciones; ahora quedan 3 y la memoria no crece.
 
 ## El Fitito y la música
 
-El modelo es el perfil extruido original (se probaron cascos por secciones, cinco variaciones del perfil y
-una pasada de detalles con vidrios incrustados; todo quedó descartado y sin exponer). Sigue fotos del Fiat 600 D: faros redondos altos sobre los guardabarros con aro cromado, luces de
+El modelo es un perfil lateral extruido con bisel, siguiendo fotos del Fiat 600 D: faros redondos altos sobre los guardabarros con aro cromado, luces de
 posición junto al paragolpes, escudo con bigotes cromados, tira por el medio del capó, ventanillas grandes de
 esquinas redondeadas con marco cromado y ventilete, custodia trasera, tomas de aire, parrilla ancha de lamas
 sobre la tapa del motor, luces traseras redondas en los guardabarros, paragolpes con defensas, ruedas chicas
 con llanta color carrocería, taza cromada y banda blanca. Los faros son lentes de vidrio transparente con
 reflector cromado y lamparita (de noche prende el emisivo). Marco de puerta, tapa del baúl (costura en U con
-tira cromada) y tapa del motor tienen sus costuras. `herramientas/casco.mjs` imprime la superficie exterior del
-casco (perfil + bisel) para apoyar vidrios, emblemas y luces sin que queden hundidos ni flotando. La música del menú es una tarantela napolitana
+tira cromada) y tapa del motor tienen sus costuras. Vidrios, emblemas y luces se apoyan sobre la chapa con medidas fijas del perfil. La música del menú es una tarantela napolitana
 propia en 6/8: mandolina en trémolo (`pluck`), acordeón en acordes, bajo "um-pa" y pandereta (`shake`).
 
 ## Sonido del motor
@@ -223,6 +230,10 @@ de PeerJS solo presenta a los jugadores, después los datos viajan directo entre
 que sirve desde GitHub Pages sin servidor propio. Protocolo (`js/multiplayer.js`):
 
 - Cada uno simula solo su auto; el anfitrión además arbitra la largada y los resultados.
+- Los nombres repetidos se numeran ("Vos", "Vos 2"): el juego indexa los pilotos por nombre y dos personas
+  con el mismo nombre terminaban corriendo un solo auto.
+- Si el anfitrión se cae en plena carrera, cada invitado pasa a decidir sus propios resultados y termina
+  la carrera solo, en vez de quedarse esperando para siempre.
 - Estados a 20 Hz (posición, rumbo, velocidad, vuelta, progreso): los invitados le mandan el
   suyo al anfitrión y el anfitrión reparte el de todos. Los autos remotos se interpolan y
   extrapolan; son cuerpos "cinemáticos": te frenan al chocarlos pero no se mueven.
