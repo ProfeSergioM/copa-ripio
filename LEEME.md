@@ -162,8 +162,8 @@ Fuera del ripio van despacio (9 m/s en la zanja) para poder salir, y un auto per
 
 ## Idioma
 
-El juego está en español y en inglés. Se elige en **Ajustes → Idioma** y queda guardado; la primera vez se
-usa el del navegador. `js/idioma.js` tiene el diccionario indexado por el texto en español, así que el código
+El juego está en español y en inglés. Arranca en inglés y se cambia en **Ajustes → Idioma**; la elección
+queda guardada. `js/idioma.js` tiene el diccionario indexado por el texto en español, así que el código
 sigue leyéndose en español: `t('¡ÚLTIMA VUELTA!')` devuelve la traducción cuando corresponde. Los textos fijos
 de `index.html` los cambia `traducirDOM()`, que recorre el documento, guarda el original en cada nodo y traduce
 textos, marcadores y opciones, así se puede volver al español sin recargar. Se traducen menús, ayuda, taller,

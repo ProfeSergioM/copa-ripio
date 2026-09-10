@@ -12,7 +12,7 @@ import { Championship, ROUNDS, POINTS, makeRoster } from './championship.js';
 import { computeStageTimes } from './stage.js';
 import { LIVERY_COLORS, KEYS } from './config.js';
 import { clamp, lerp } from './util.js';
-import { t, setIdioma, traducirDOM, idiomaDelNavegador, idiomaActual } from './idioma.js';
+import { t, setIdioma, traducirDOM, idiomaActual } from './idioma.js';
 import { STRIDE } from './replay.js';
 import { Multiplayer } from './multiplayer.js';
 
@@ -30,7 +30,7 @@ const app = {
 
 function loadSettings() {
   try { const s = JSON.parse(localStorage.getItem(SETTINGS_KEY)); if (s) { Object.assign(app.settings, s.settings || {}); Object.assign(app.playerSpec, s.playerSpec || {}); } } catch (e) { /* nada */ }
-  if (!app.settings.idioma) app.settings.idioma = idiomaDelNavegador(); // primera vez: el del navegador
+  if (!app.settings.idioma) app.settings.idioma = 'en'; // por defecto en inglés; el español está en Ajustes
   aplicarIdioma(app.settings.idioma);
 }
 // Cambia el idioma y vuelve a traducir la pantalla (los textos dinámicos ya pasan por t())

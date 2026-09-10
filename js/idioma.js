@@ -352,12 +352,6 @@ let actual = 'es';
 
 export function idiomaActual() { return actual; }
 export function setIdioma(cod) { actual = IDIOMAS[cod] !== undefined ? cod : 'es'; }
-// Idioma sugerido por el navegador la primera vez
-export function idiomaDelNavegador() {
-  const l = (navigator.languages && navigator.languages[0]) || navigator.language || 'es';
-  return /^es/i.test(l) ? 'es' : 'en';
-}
-
 // Traduce un texto (o lo devuelve tal cual si no está en el diccionario)
 export function t(texto) {
   if (actual === 'es' || texto == null) return texto;
