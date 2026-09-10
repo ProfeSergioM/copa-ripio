@@ -486,7 +486,7 @@ function tick(now) {
     if (app.state === 'race') {
       app.chase.update(dt, race.player.state, app.lookBack);
       const h = race.hudData();
-      app.ui.updateHUD(h); app.ui.drawSpeedo(h.kmh, h.rpm, dt); app.ui.drawMinimap(race.cars, race.player, h.leader);
+      app.ui.updateHUD(h); app.ui.drawSpeedo(h.kmh, h.rpm, dt, h); app.ui.drawMinimap(race.cars, race.player, h.leader);
     } else app.chase.update(dt, race.player.state, false);
   } else if (app.state === 'podium') {
     updatePodium(dt);

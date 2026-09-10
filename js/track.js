@@ -22,7 +22,9 @@ export const CIRCUITS = {
     scenery: { grandstand: 0.035, windmill: 0.76, house: 0.36, bridge: 0.25, poplars: [0.56, 0.68], willow: 0.16 },
   },
   ovalo: {
-    id: 'ovalo', name: 'Óvalo de Tierra del Club Social', closed: true, start: [0, -55], heightScale: 1.35,
+    // aiBoost: el óvalo es corto y fácil, así que los rivales corren con mejor auto (calibrado con herramientas/fuera.mjs)
+    id: 'ovalo', name: 'Óvalo de Tierra del Club Social', closed: true, start: [0, -55], heightScale: 1.35, aiBoost: 1.16,
+    paisaje: 'bosque', cerros: 1.55, aire: { color: '#8fa88c', k: 0.62 },
     points: [
       [-110, -52, 0], [-40, -56, 0.2], [40, -56, 0.2], [110, -52, 0.4], [148, -22, 1.2], [152, 18, 1.4], [120, 50, 0.8],
       [40, 58, 0.3], [-40, 58, 0.3], [-120, 50, 0.6], [-152, 18, 1.5], [-148, -22, 1.3],
@@ -182,7 +184,7 @@ export class Track {
     const ddx = Math.max(b.minX - x, 0, x - b.maxX), ddz = Math.max(b.minZ - z, 0, z - b.maxZ);
     const r = Math.hypot(ddx, ddz);
     const far = smoothstep(120, 340, r);
-    h += far * (42 + 62 * (0.5 + nz.fbm(x / 90, z / 90, 3)));
+    h += far * (42 + 62 * (0.5 + nz.fbm(x / 90, z / 90, 3))) * (this.def.cerros || 1);
     return h;
   }
   buildHeightfield() {

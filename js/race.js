@@ -60,7 +60,13 @@ export class Race {
       this.scene.add(vis.root);
       setHeadlights(vis, this.world.night || this.wet || this.world.foggy);
       const car = { state, vis, name: r.name, color: r.color, isPlayer: r.isPlayer, spec: r, ai: null, dustAcc: 0, smokeAcc: 0, position: i + 1, prevPosition: i + 1, honkT: 0, gridSlot: i, lastLapProgress: 0, markAcc: 0, isRival: r.name === this.rivalName };
-      if (!r.isPlayer) { const dd = this.settings.difficulty - 1; state.tune = { torque: 1 + dd * 0.9, grip: 1.02 + dd * 0.9, brake: 1 + dd * 0.5 }; car.ai = new AIDriver(state, this.track, this.line, { skill: r.skill, aggression: r.aggression, seed: r.seed, difficulty: this.settings.difficulty, tune: state.tune }); }
+      if (!r.isPlayer) {
+        const dd = this.settings.difficulty - 1;
+        // Empuje propio de la pista: en circuitos fáciles (el óvalo) los rivales van con más auto
+        const emp = this.track.def.aiBoost || 1;
+        state.tune = { torque: (1 + dd * 0.9) * emp, grip: (1.02 + dd * 0.9) * emp, brake: (1 + dd * 0.5) * emp };
+        car.ai = new AIDriver(state, this.track, this.line, { skill: r.skill, aggression: r.aggression, seed: r.seed, difficulty: this.settings.difficulty, tune: state.tune });
+      }
       else if (this.champ) { state.tune = this.champ.tune(); this.applyCarriedDamage(car, this.champ.damage); }
       if (r.isPlayer && (this.world.night || this.wet || this.world.foggy)) {
         for (const sx of [-0.48, 0.48]) {

@@ -124,8 +124,12 @@ export class World {
     this.skyMat.uniforms.top.value.set(p.top); this.skyMat.uniforms.horizon.value.set(p.horizon);
     this.skyMat.uniforms.sunDir.value.set(p.sun[0], p.sun[1], p.sun[2]); this.skyMat.uniforms.sunCol.value.set(p.sunCol);
     this.skyMat.uniforms.night.value = p.night ? 1 : 0;
-    this.scene.fog.color.set(p.fog); this.scene.fog.near = p.fogNear; this.scene.fog.far = p.fogFar;
-    this.renderer.setClearColor(p.fog);
+    const aire = this.track.def.aire; // tinte y alcance propios del circuito (el bosque va más cerrado)
+    const nieblaCol = aire && !p.foggy ? aire.color : p.fog;
+    this.scene.fog.color.set(nieblaCol);
+    this.scene.fog.near = p.fogNear * (aire && !p.foggy ? aire.k : 1);
+    this.scene.fog.far = p.fogFar * (aire && !p.foggy ? aire.k : 1);
+    this.renderer.setClearColor(nieblaCol);
     for (const l of this.lamps) { l.light.visible = p.lamps; l.bulb.material = p.lamps ? this.lampOnMat : this.lampOffMat; l.cone.visible = p.lamps; }
     this.clouds.visible = !p.night;
     this.night = p.night; this.foggy = !!p.foggy;
@@ -149,7 +153,9 @@ export class World {
     const pos = geo.attributes.position, col = new Float32Array(pos.count * 3);
     const cx = hf.x0 + (w - 1) * hf.cell / 2, cz = hf.z0 + (d - 1) * hf.cell / 2;
     const wet = this.wet;
-    const grass = new THREE.Color(wet ? '#5f7f3c' : '#7fa04a'), dry = new THREE.Color(wet ? '#8a7f48' : '#b9a85a'), dark = new THREE.Color('#4c6a30'), dust = new THREE.Color(wet ? '#8f7a55' : '#c9ad78'), rock = new THREE.Color('#8f8a7a'), snow = new THREE.Color('#e8e6dd');
+    const bosque = this.track.def.paisaje === 'bosque';
+    const grass = new THREE.Color(bosque ? (wet ? '#3f6030' : '#4f7a36') : (wet ? '#5f7f3c' : '#7fa04a')), dry = new THREE.Color(bosque ? (wet ? '#5c6a3a' : '#77813f') : (wet ? '#8a7f48' : '#b9a85a')), dark = new THREE.Color(bosque ? '#2c4622' : '#4c6a30'), dust = new THREE.Color(wet ? '#8f7a55' : '#c9ad78'), rock = new THREE.Color('#8f8a7a'), snow = new THREE.Color('#e8e6dd');
+    const cerro = new THREE.Color('#26401f'), pizarra = new THREE.Color('#2b3340');
     const tmp = new THREE.Color();
     const nz = this.track.noise;
     for (let i = 0; i < pos.count; i++) {
@@ -161,9 +167,15 @@ export class World {
       const n1 = nz.fbm(x / 60, z / 60, 3), n2 = nz.fbm(x / 14 + 9, z / 14, 2);
       tmp.copy(grass).lerp(dry, smoothstep(0.05, 0.5, n1)).lerp(dark, smoothstep(0.2, 0.6, -n2) * 0.6);
       tmp.lerp(dust, 1 - smoothstep(this.track.W + 0.5, this.track.W + 6, dist));
-      if (h > 26) tmp.lerp(rock, smoothstep(26, 40, h));
-      if (h > 52) tmp.lerp(snow, smoothstep(52, 66, h));
-      tmp.lerp(new THREE.Color('#ffffff'), 0.68).multiplyScalar(0.94 + 0.12 * nz.noise(x / 5, z / 5));
+      if (bosque) {
+        // cerros oscuros de fondo: pinar cerrado que se va a pizarra, sin nieve
+        tmp.lerp(cerro, smoothstep(18, 46, h));
+        tmp.lerp(pizarra, smoothstep(46, 80, h));
+      } else {
+        if (h > 26) tmp.lerp(rock, smoothstep(26, 40, h));
+        if (h > 52) tmp.lerp(snow, smoothstep(52, 66, h));
+      }
+      tmp.lerp(new THREE.Color('#ffffff'), bosque ? 0.5 : 0.68).multiplyScalar(0.94 + 0.12 * nz.noise(x / 5, z / 5));
       col[i * 3] = tmp.r; col[i * 3 + 1] = tmp.g; col[i * 3 + 2] = tmp.b;
     }
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
@@ -238,10 +250,13 @@ export class World {
     // pino de tres pisos y ombú de copa ancha
     const pineGeo = mergeGeometries([new THREE.ConeGeometry(2.2, 3.2, 7).translate(0, 3.2, 0), new THREE.ConeGeometry(1.7, 2.8, 7).translate(0, 5.0, 0), new THREE.ConeGeometry(1.1, 2.2, 7).translate(0, 6.6, 0)]);
     const ombuGeo = new THREE.IcosahedronGeometry(3.2, 1); ombuGeo.scale(1.35, 0.6, 1.35); ombuGeo.translate(0, 3.6, 0);
-    const greens = this.wet ? ['#4e7a33', '#5c8a3e', '#41692e', '#6f9440'] : ['#5e8f3e', '#6fa04a', '#4f7f38', '#8fae4a'];
+    const bosque = t.def.paisaje === 'bosque';
+    const greens = bosque
+      ? (this.wet ? ['#2f5426', '#3a6330', '#254a20', '#436e33'] : ['#37622c', '#426f34', '#2b5124', '#4c7a3a'])
+      : (this.wet ? ['#4e7a33', '#5c8a3e', '#41692e', '#6f9440'] : ['#5e8f3e', '#6fa04a', '#4f7f38', '#8fae4a']);
     const trees = [], poplars = [], bushes = [], pines = [], ombus = [];
     const b = t.bounds;
-    const density = t.closed ? 900 : 1600;
+    const density = (t.closed ? 900 : 1600) * (bosque ? 2.6 : 1);
     for (let i = 0; i < density; i++) {
       const x = b.minX - 140 + rnd() * (b.maxX - b.minX + 280), z = b.minZ - 140 + rnd() * (b.maxZ - b.minZ + 280);
       const q = t.nearest(x, z);
@@ -250,11 +265,35 @@ export class World {
       if (h > 40) continue;
       if (this.reservedHit(x, z)) continue;
       const r = rnd();
+      // en el bosque mandan los pinos y los árboles son más altos
+      if (bosque) {
+        if (r < 0.56) pines.push({ x, z, h, s: 0.9 + rnd() * 0.9, rot: rnd() * 6, c: 2 });
+        else if (r < 0.82) trees.push({ x, z, h, s: 0.9 + rnd() * 0.8, rot: rnd() * 6, c: Math.floor(rnd() * greens.length) });
+        else if (r < 0.94) bushes.push({ x, z, h, s: 0.7 + rnd() * 0.9, rot: rnd() * 6, c: Math.floor(rnd() * greens.length) });
+        else poplars.push({ x, z, h, s: 0.9 + rnd() * 0.6, rot: rnd() * 6, c: Math.floor(rnd() * greens.length) });
+        continue;
+      }
       if (r < 0.42) trees.push({ x, z, h, s: 0.7 + rnd() * 0.7, rot: rnd() * 6, c: Math.floor(rnd() * greens.length) });
       else if (r < 0.6) bushes.push({ x, z, h, s: 0.6 + rnd() * 0.8, rot: rnd() * 6, c: Math.floor(rnd() * greens.length) });
       else if (r < 0.78) pines.push({ x, z, h, s: 0.7 + rnd() * 0.6, rot: rnd() * 6, c: 2 });
       else if (r < 0.86 && q.dist > t.W + 25) ombus.push({ x, z, h, s: 0.9 + rnd() * 0.5, rot: rnd() * 6, c: 3 });
       else poplars.push({ x, z, h, s: 0.8 + rnd() * 0.5, rot: rnd() * 6, c: Math.floor(rnd() * greens.length) });
+    }
+    // Banda de pinar pegada al alambrado: da la sensación de correr dentro del bosque
+    if (bosque) {
+      for (let f = 0; f < 1; f += 0.0035) {
+        const q = t.sampleAtFrac(f);
+        for (const side of [-1, 1]) {
+          for (let k = 0; k < 3; k++) {
+            const lat = side * (t.W + 12 + rnd() * 46);
+            const x = q.x + q.nx * lat + (rnd() - 0.5) * 8, z = q.z + q.nz * lat + (rnd() - 0.5) * 8;
+            if (t.nearest(x, z).dist < t.W + 11 || this.reservedHit(x, z)) continue;
+            const h = t.heightAt(x, z);
+            if (rnd() < 0.62) pines.push({ x, z, h, s: 0.9 + rnd() * 1.0, rot: rnd() * 6, c: 2 });
+            else trees.push({ x, z, h, s: 0.9 + rnd() * 0.8, rot: rnd() * 6, c: Math.floor(rnd() * greens.length) });
+          }
+        }
+      }
     }
     for (let f = sc.poplars[0]; f < sc.poplars[1]; f += 0.012) {
       const s = t.sampleAtFrac(f);

@@ -33,7 +33,9 @@ y abrir <http://localhost:5173>. La dependencia `three` ya está en `node_module
 Siete fechas con premios en plata y puntos 25-20-17… para los 20:
 
 1. **Polvaredas, mañana** — 3 vueltas.
-2. **Óvalo de Tierra del Club Social** — pista corta, 5 vueltas, todos pegados.
+2. **Óvalo de Tierra del Club Social** — pista corta, 5 vueltas, todos pegados. Corre dentro
+   de un pinar cerrado, con cerros oscuros de fondo y aire verdoso; los rivales van con un
+   plus de motor, agarre y freno (`aiBoost` del circuito) porque el óvalo quedaba muy fácil.
 3. **Tormenta de verano** en Polvaredas — lluvia, barro (agarre 74 %), viento cruzado que
    lleva el polvo y la lluvia, público con paraguas, reflectores prendidos.
 4. **Especial Camino del Cerro** — tramo de rally punto a punto contra el reloj. Los 19
@@ -74,6 +76,11 @@ Siete fechas con premios en plata y puntos 25-20-17… para los 20:
   parciales y fecha.
 - **HUD**: el líder lleva un aro dorado con un "1" en el minimapa; aparecen flechas rojas a
   los costados cuando alguien viene a pasarte.
+- **Tablero único** (`js/ui.js`, `drawSpeedo`): daños, velocímetro/cuentavueltas y marcha se
+  dibujan juntos en un solo lienzo abajo a la derecha, en vez de tres cajas sueltas.
+- **Paisaje por circuito** (`paisaje`, `cerros`, `aire` en `js/track.js`): el óvalo usa paleta
+  de bosque, cerros 55 % más altos, arboleda 2,6× más densa con banda de pinos pegada al
+  alambrado, y niebla propia para que no se parezca a Polvaredas.
 - **Celular**: controles táctiles (volante, acelerador, freno, freno de mano), HUD compacto
   y menos píxeles para mantener los cuadros.
 - **IA calibrada por ensayo y error** (`herramientas/zigzag.mjs`, `traza.mjs`, `atascos.mjs`):

@@ -205,6 +205,7 @@ const EN = {
   '· Récord': '· Record',
   'Salida': 'Start',
   'DAÑOS': 'DAMAGE',
+  'MARCHA': 'GEAR',
   'REBUFO': 'SLIPSTREAM',
   '¡CONTRAMANO!': 'WRONG WAY!',
   '● REPETICIÓN': '● REPLAY',

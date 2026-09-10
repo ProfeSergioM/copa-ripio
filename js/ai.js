@@ -32,7 +32,7 @@ export class AIDriver {
     // La dificultad no infla la estimación: la ventaja real viene del "tune" del auto (más agarre, par y frenos),
     // y la IA conoce ese agarre. Si la estimación crece más que el agarre real, entran pasados y se van afuera.
     const tune = profile.tune || { grip: 1, brake: 1 };
-    this.speedFactor = (0.91 + 0.09 * this.skill) * (1 + Math.max(0, this.difficulty - 1) * (profile.sfk != null ? profile.sfk : 0.35));
+    this.speedFactor = (0.91 + 0.09 * this.skill) * (1 + Math.max(0, this.difficulty - 1) * (profile.sfk != null ? profile.sfk : 0.35)) * (profile.pace || 1);
     this.decel = 4.3 * (0.85 + 0.3 * this.skill) * (tune.brake || 1);
     const MUK = profile.muk || 0.76; // calibrado con herramientas/solo2.mjs y fuera.mjs
     this.hs = profile.hs != null ? profile.hs : 0.015; // pérdida de agarre estimado en curvas rápidas (por m/s sobre 12)

@@ -28,10 +28,6 @@ export class UI {
     $('hud-lap').textContent = Math.min(d.lap + 1, d.laps); $('hud-laps').textContent = d.laps;
     $('hud-lapbox').classList.toggle('hidden', !!d.timetrial);
     $('hud-laptime').textContent = formatTime(d.lapTime); $('hud-best').textContent = formatTime(d.best); $('hud-record').textContent = formatTime(d.record);
-    $('hud-gear').textContent = d.reverse ? 'R' : (d.gear + 1);
-    const dmg = d.damage;
-    const col = (v) => v < 0.25 ? '#8bc34a' : v < 0.5 ? '#f0c541' : v < 0.75 ? '#ef8a3c' : '#d94a3a';
-    $('dmg-front').style.fill = col(dmg.front); $('dmg-rear').style.fill = col(dmg.rear); $('dmg-left').style.fill = col(dmg.left); $('dmg-right').style.fill = col(dmg.right);
     $('slipstream').classList.toggle('hidden', !d.slipstream);
     $('wrongway').classList.toggle('hidden', !d.wrongWay);
     if (d.order) {
@@ -46,29 +42,60 @@ export class UI {
     if (d.timetrial) { $('hud-sector').textContent = t(d.sector); $('hud-stagebar').style.width = `${Math.round(clamp(d.progress, 0, 1) * 100)}%`; }
   }
 
-  drawSpeedo(kmh, rpmFrac, dt) {
-    const g = this.speedo, W = 260, H = 170;
+  // Tablero único: daños a la izquierda, reloj en el medio y marcha a la derecha, todo en un lienzo.
+  drawSpeedo(kmh, rpmFrac, dt, d) {
+    const g = this.speedo, W = 376, H = 184;
+    const tinta = '#2b1d14', crema = 'rgba(255,243,214,0.94)';
     g.clearRect(0, 0, W, H);
-    const cx = 130, cy = 132, R = 100;
-    g.beginPath(); g.moveTo(cx - R - 10, cy + 12); g.arc(cx, cy, R + 10, Math.PI, 0); g.lineTo(cx + R + 10, cy + 12); g.closePath();
-    g.fillStyle = 'rgba(255,243,214,0.94)'; g.fill(); g.lineWidth = 4; g.strokeStyle = '#2b1d14'; g.stroke();
+    // caja del tablero
+    const caja = (x, y, w, h, r) => { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); };
+    caja(3, 3, W - 6, H - 6, 22); g.fillStyle = crema; g.fill(); g.lineWidth = 5; g.strokeStyle = tinta; g.stroke();
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+
+    // ---- daños: silueta del auto por zonas
+    const dmg = (d && d.damage) || { front: 0, rear: 0, left: 0, right: 0 };
+    const colDmg = (v) => v < 0.25 ? '#8bc34a' : v < 0.5 ? '#f0c541' : v < 0.75 ? '#ef8a3c' : '#d94a3a';
+    const dx = 20, dy = 40, dw = 54, dh = 100;
+    const zona = (x, y, w, h, r, v) => { caja(x, y, w, h, r); g.fillStyle = colDmg(v); g.fill(); g.lineWidth = 2.5; g.strokeStyle = tinta; g.stroke(); };
+    zona(dx + 11, dy, 32, 21, 8, dmg.front);
+    zona(dx, dy + 23, 11, 46, 4, dmg.left);
+    zona(dx + 43, dy + 23, 11, 46, 4, dmg.right);
+    zona(dx + 11, dy + 71, 32, 21, 8, dmg.rear);
+    caja(dx + 16, dy + 26, 22, 40, 6); g.fillStyle = 'rgba(43,29,20,.35)'; g.fill();
+    g.fillStyle = tinta; g.font = '700 12px Fredoka, sans-serif';
+    g.fillText(t('DAÑOS'), dx + dw / 2, 26);
+
+    // ---- separadores
+    g.strokeStyle = 'rgba(43,29,20,.25)'; g.lineWidth = 2;
+    for (const x of [96, 300]) { g.beginPath(); g.moveTo(x, 22); g.lineTo(x, H - 22); g.stroke(); }
+
+    // ---- reloj
+    const cx = 198, cy = 146, R = 92;
     const a0 = Math.PI * 1.08, a1 = Math.PI * 1.92;
-    g.beginPath(); g.arc(cx, cy, R - 14, a0, a1); g.lineWidth = 10; g.strokeStyle = '#e6d9b8'; g.stroke();
+    g.beginPath(); g.arc(cx, cy, R - 14, a0, a1); g.lineWidth = 11; g.strokeStyle = '#a08c6b'; g.stroke();
     g.beginPath(); g.arc(cx, cy, R - 14, a0, a0 + (a1 - a0) * clamp(rpmFrac, 0, 1)); g.strokeStyle = rpmFrac > 0.92 ? '#d94a3a' : '#e2a33b'; g.stroke();
-    g.fillStyle = '#2b1d14'; g.font = 'bold 12px Fredoka, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = tinta; g.font = 'bold 12px Fredoka, sans-serif';
     for (let v = 0; v <= 160; v += 20) {
       const a = a0 + (a1 - a0) * v / 160;
-      const x1 = cx + Math.cos(a) * (R - 26), y1 = cy + Math.sin(a) * (R - 26), x2 = cx + Math.cos(a) * (R - 34), y2 = cy + Math.sin(a) * (R - 34);
-      g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.lineWidth = 3; g.strokeStyle = v >= 120 ? '#d94a3a' : '#2b1d14'; g.stroke();
-      g.fillText(v, cx + Math.cos(a) * (R - 46), cy + Math.sin(a) * (R - 46));
+      const largo = v % 40 === 0 ? 11 : 6;
+      const x1 = cx + Math.cos(a) * (R - 25), y1 = cy + Math.sin(a) * (R - 25), x2 = cx + Math.cos(a) * (R - 25 - largo), y2 = cy + Math.sin(a) * (R - 25 - largo);
+      g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.lineWidth = v % 40 === 0 ? 3 : 2; g.strokeStyle = v >= 120 ? '#d94a3a' : tinta; g.stroke();
+      if (v % 40 === 0) g.fillText(v, cx + Math.cos(a) * (R - 48), cy + Math.sin(a) * (R - 48));
     }
     this.needle = lerp(this.needle, clamp(kmh, 0, 165), clamp(dt * 12, 0, 1));
     const na = a0 + (a1 - a0) * this.needle / 160;
     g.beginPath(); g.moveTo(cx - Math.cos(na) * 10, cy - Math.sin(na) * 10); g.lineTo(cx + Math.cos(na) * (R - 30), cy + Math.sin(na) * (R - 30));
     g.lineWidth = 5; g.strokeStyle = '#c94f2a'; g.lineCap = 'round'; g.stroke();
-    g.beginPath(); g.arc(cx, cy, 8, 0, 7); g.fillStyle = '#2b1d14'; g.fill();
-    g.font = 'bold 30px Fredoka, sans-serif'; g.fillStyle = '#2b1d14'; g.fillText(Math.round(Math.abs(kmh)), cx, cy - 34);
-    g.font = '600 11px Fredoka, sans-serif'; g.fillText('km/h', cx, cy - 16);
+    g.beginPath(); g.arc(cx, cy, 8, 0, 7); g.fillStyle = tinta; g.fill();
+    g.font = 'bold 32px Fredoka, sans-serif'; g.fillStyle = tinta; g.fillText(Math.round(Math.abs(kmh)), cx, 38);
+    g.font = '600 11px Fredoka, sans-serif'; g.fillText('km/h', cx, 62);
+
+    // ---- marcha
+    const gx = 338;
+    g.font = '700 12px Fredoka, sans-serif'; g.fillStyle = tinta; g.fillText(t('MARCHA'), gx, 26);
+    caja(gx - 26, 46, 52, 58, 12); g.fillStyle = '#e6d9b8'; g.fill(); g.lineWidth = 3; g.strokeStyle = tinta; g.stroke();
+    g.font = 'bold 40px Fredoka, sans-serif'; g.fillStyle = tinta;
+    g.fillText(d ? (d.reverse ? 'R' : (d.gear + 1)) : 'N', gx, 77);
   }
 
   prepareMinimap(track) {
