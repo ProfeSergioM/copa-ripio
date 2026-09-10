@@ -171,6 +171,27 @@ campeonato, resultados, récords, multijugador, el HUD, los carteles de carrera,
 los nombres de las fechas, de las pistas y de los sectores. Quedan en español los nombres de los pilotos y los
 carteles de publicidad de la pista, que son parte del ambiente.
 
+## Audio: por qué se cortaba
+
+Cada sonido puntual (golpe, bocina, petardeo, nota de la música) armaba una cadena nueva de nodos y la
+dejaba colgada del master: nadie la desconectaba al terminar. El hilo de audio recorre esa cadena en cada
+bloque, así que se iba llenando de nodos muertos hasta entrecortarse y callarse del todo. Medido en carrera:
+1145 nodos creados y 0 liberados en 20 segundos; un golpe cuesta 20 nodos y una piña de doce autos, 240 de
+golpe. Tres arreglos en `js/audio.js`:
+
+- `soltar()` desconecta toda la cadena cuando el sonido termina (`onended`).
+- La música del menú deja de programar notas cuando no se escucha (en carrera seguía creando notas mudas).
+- Presupuesto de voces: si ya hay muchos sonidos sonando, los golpes flojos no se disparan.
+
+Tras el arreglo, con 48 choques forzados encima del audio normal: 9475 nodos creados y 9456 liberados, los
+vivos se mantienen entre 19 y 31, y el nivel de salida se queda en 0,10 a 0,13 sin apagarse nunca.
+
+## Controles táctiles
+
+En pantallas angostas los botones eran más chicos que en escritorio (60 px). Ahora se miden en `vw` con
+tope: el volante es el más grande (75 px en un teléfono de 375 px, 96 en pantallas anchas), después el
+acelerador y el freno, y el freno de mano queda chico. El tablero de abajo sube solo para no taparse.
+
 ## Rendimiento
 
 Dibujar 20 autos era el 87 % del costo de cada cuadro: cada Fitito se armaba con 144 mallas sueltas

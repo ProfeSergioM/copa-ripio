@@ -94,8 +94,8 @@ export class GameAudio {
     sm.lp.frequency.setTargetAtTime(1100 + load * 5000, t, 0.06);
     sm.out.gain.setTargetAtTime(gain * (0.45 + 0.55 * load) * (misfire ? 0.2 : 1), t, misfire ? 0.01 : 0.05);
   }
-  engineStart() { if (!this.ctx || !this.startBuf) return; const src = this.ctx.createBufferSource(); src.buffer = this.startBuf; const g = this.ctx.createGain(); g.gain.value = 0.5; src.connect(g); g.connect(this.master); src.start(); }
-  crashSample(strength, pan) { if (!this.crashBuf) return; const ctx = this.ctx; const src = ctx.createBufferSource(); src.buffer = this.crashBuf; src.playbackRate.value = 0.8 + Math.random() * 0.5; const g = ctx.createGain(); g.gain.value = clamp(strength / 10, 0.15, 1); const p = ctx.createStereoPanner(); p.pan.value = clamp(pan, -1, 1); src.connect(g); g.connect(p); p.connect(this.master); src.start(); }
+  engineStart() { if (!this.ctx || !this.startBuf) return; const src = this.ctx.createBufferSource(); src.buffer = this.startBuf; const g = this.ctx.createGain(); g.gain.value = 0.5; src.connect(g); g.connect(this.master); src.start(); this.soltar(src, g); }
+  crashSample(strength, pan) { if (!this.crashBuf) return; const ctx = this.ctx; const src = ctx.createBufferSource(); src.buffer = this.crashBuf; src.playbackRate.value = 0.8 + Math.random() * 0.5; const g = ctx.createGain(); g.gain.value = clamp(strength / 10, 0.15, 1); const p = ctx.createStereoPanner(); p.pan.value = clamp(pan, -1, 1); src.connect(g); g.connect(p); p.connect(this.master); src.start(); this.soltar(src, g, p); }
 
   setVolume(v) { this.volume = v; if (this.master) this.master.gain.value = this.muted ? 0 : v * 1.2; }
   toggleMute() { this.muted = !this.muted; if (this.master) this.master.gain.value = this.muted ? 0 : this.volume * 1.2; return this.muted; }
@@ -148,6 +148,23 @@ export class GameAudio {
     v.out.gain.setTargetAtTime(g, t, misfire ? 0.01 : 0.04);
   }
 
+  // Los sonidos puntuales (golpes, bocinas, petardeo, notas) arman una cadena de nodos nueva cada vez.
+  // Si no se desconecta al terminar, la cadena queda colgada del master y el hilo de audio la recorre en
+  // cada bloque: con cientos acumuladas el sonido se entrecorta y termina cortándose del todo.
+  soltar(fuente, ...nodos) {
+    this.vivos = (this.vivos || 0) + 1;
+    const libre = () => {
+      if (fuente.__suelto) return; fuente.__suelto = true;
+      this.vivos--;
+      for (const n of nodos) { try { n.disconnect(); } catch (e) { /* ya estaba */ } }
+      try { fuente.disconnect(); } catch (e) { /* ya estaba */ }
+    };
+    fuente.onended = libre;
+    return fuente;
+  }
+  // Presupuesto de voces: en un montón de choques a la vez, los más flojos no se disparan
+  hayVoz(max = 24) { return (this.vivos || 0) < max; }
+
   noiseVoice(freq, q) {
     const ctx = this.ctx;
     const src = ctx.createBufferSource(); src.buffer = this.noiseBuf; src.loop = true;
@@ -165,6 +182,7 @@ export class GameAudio {
     const g = ctx.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
     const p = ctx.createStereoPanner(); p.pan.value = clamp(pan, -1, 1);
     src.connect(f); f.connect(g); g.connect(p); p.connect(this.master); src.start(t); src.stop(t + dur + 0.05);
+    this.soltar(src, f, g, p);
   }
   tone(freq, type, gain, dur, pan = 0, slide = 1) {
     const ctx = this.ctx, t = ctx.currentTime;
@@ -172,9 +190,12 @@ export class GameAudio {
     const g = ctx.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
     const p = ctx.createStereoPanner(); p.pan.value = clamp(pan, -1, 1);
     o.connect(g); g.connect(p); p.connect(this.master); o.start(t); o.stop(t + dur + 0.05);
+    this.soltar(o, g, p);
   }
   impact(strength, pan = 0, soft = false) {
     if (!this.ctx) return;
+    // en una piña de varios autos entran muchos golpes en el mismo cuadro: se dejan pasar los fuertes
+    if (!this.hayVoz(strength > 6 ? 40 : 24)) return;
     const s = clamp(strength / 12, 0.1, 1);
     if (soft) { this.burst(250, 0.5, 0.5 * s, 0.25, pan); return; }
     if (strength > 3) this.crashSample(strength, pan);
@@ -305,6 +326,8 @@ export class GameAudio {
     const stepDur = 0.135; // corchea (6/8 a ~148 negras con puntillo)
     const tick = () => {
       const ctx = this.ctx; if (!ctx) return;
+      // si no se oye (en carrera, o en silencio) no se arma nada: antes seguía creando notas mudas
+      if (!this.musicOn || this.muted || this.state !== 'menu') { this.musicNext = ctx.currentTime + 0.1; this.musicStep = 0; return; }
       while (this.musicNext < ctx.currentTime + 0.4) {
         const i = this.musicStep % melody.length, bar = bars[Math.floor(i / 6) % bars.length], k = i % 6;
         const t0 = Math.max(this.musicNext, ctx.currentTime);
@@ -335,6 +358,7 @@ export class GameAudio {
     const o2 = ctx.createOscillator(); o2.type = 'sawtooth'; o2.frequency.value = freq * 2.003; const g2 = ctx.createGain(); g2.gain.value = 0.25;
     o1.connect(f); o2.connect(g2); g2.connect(f); f.connect(g); g.connect(this.musicGain);
     o1.start(t0); o2.start(t0); o1.stop(t0 + 0.4); o2.stop(t0 + 0.4);
+    this.soltar(o1, f, g); this.soltar(o2, g2);
   }
   // pandereta: ruido corto muy agudo con un poco de sonajero
   shake(t0, gain) {
@@ -343,10 +367,11 @@ export class GameAudio {
     const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 6500; bp.Q.value = 1.2;
     const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(gain, t0 + 0.003); g.gain.setTargetAtTime(0.0001, t0 + 0.02, 0.035);
     src.connect(bp); bp.connect(g); g.connect(this.musicGain); src.start(t0, Math.random() * 0.5); src.stop(t0 + 0.2);
+    this.soltar(src, bp, g);
   }
   note(freq, t0, dur, type, gain, detune) {
     const ctx = this.ctx;
-    const mk = (det) => { const o = ctx.createOscillator(); o.type = type; o.frequency.value = freq; o.detune.value = det; const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(gain, t0 + 0.015); g.gain.setTargetAtTime(0.0001, t0 + dur * 0.7, dur * 0.15); o.connect(g); g.connect(this.musicGain); o.start(t0); o.stop(t0 + dur + 0.3); };
+    const mk = (det) => { const o = ctx.createOscillator(); o.type = type; o.frequency.value = freq; o.detune.value = det; const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(gain, t0 + 0.015); g.gain.setTargetAtTime(0.0001, t0 + dur * 0.7, dur * 0.15); o.connect(g); g.connect(this.musicGain); o.start(t0); o.stop(t0 + dur + 0.3); this.soltar(o, g); };
     mk(0); if (detune) mk(9);
   }
 }

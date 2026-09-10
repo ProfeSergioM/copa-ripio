@@ -176,7 +176,7 @@ td.num, th.num { text-align: right; }
   #minimap { width: 96px; height: 96px; border-width: 2px; border-radius: 10px; }
   .hud-box.style { font-size: 11px; margin-top: 4px; padding: 2px 6px; }
   #style-pops { top: 150px; width: 160px; } .style-pop { font-size: 16px; letter-spacing: 1px; } .style-pop .combo { font-size: 18px; }
-  #hud-bottom { bottom: 96px; right: 6px; gap: 6px; }
+  #hud-bottom { bottom: calc(24px + min(96px, 20vw)); right: 6px; gap: 6px; }
   #speedo { width: 140px; height: 92px; }
   .hud-box.gear { font-size: 22px; width: 40px; margin-bottom: 4px; }
   .hud-box.damage { margin-bottom: 4px; padding: 3px 6px; } .hud-box.damage svg { width: 30px; height: 50px; } .dmg-label { font-size: 8px; }
@@ -184,11 +184,17 @@ td.num, th.num { text-align: right; }
   .hud-box.stage { top: 48px; min-width: 200px; font-size: 12px; }
   .hud-box.rival { display: none; }
   .taunt { top: 80px; font-size: 12px; padding: 5px 10px; max-width: 78vw; border-width: 2px; }
-  #toasts { bottom: 190px; gap: 4px; } .toast { font-size: 13px; padding: 4px 10px; border-width: 2px; }
+  #toasts { bottom: calc(120px + min(96px, 20vw)); gap: 4px; } .toast { font-size: 13px; padding: 4px 10px; border-width: 2px; }
   #countdown { font-size: 90px; } #banner { font-size: 22px; padding: 4px 16px; top: 15%; }
   #slipstream { font-size: 16px; bottom: 170px; } #wrongway { font-size: 26px; }
   .arrow { font-size: 40px; top: 42%; } #arrow-l { left: 8px; } #arrow-r { right: 8px; }
-  .tc-btn { width: 60px; height: 60px; font-size: 24px; } .tc-left, .tc-right { bottom: 12px; gap: 8px; } .tc-left { left: 10px; } .tc-right { right: 10px; }
+  /* Controles táctiles grandes: el volante es lo que más cuesta apuntar, así que va primero.
+     Se miden en vw con tope para que crezcan en pantallas anchas sin superponerse en las angostas. */
+  .tc-btn { width: min(96px, 20vw); height: min(96px, 20vw); font-size: min(38px, 8vw); border-width: 4px; box-shadow: 0 5px 0 var(--ink); }
+  .tc-gas, .tc-brake { width: min(84px, 17vw); height: min(84px, 17vw); font-size: min(32px, 7vw); }
+  .tc-hb { width: min(60px, 12vw); height: min(60px, 12vw); font-size: min(24px, 5vw); align-self: flex-end; }
+  .tc-left, .tc-right { bottom: 14px; gap: 8px; align-items: flex-end; }
+  .tc-left { left: 8px; } .tc-right { right: 8px; }
   .ov-tag { font-size: 20px; top: 10px; left: 10px; } .ov-text { font-size: 20px; } .ov-hint { font-size: 11px; }
   #vignette { display: none; }
   .champ-cols { gap: 12px; } .next-round { font-size: 13px; } .next-round b { font-size: 16px; }
