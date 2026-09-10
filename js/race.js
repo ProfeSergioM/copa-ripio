@@ -1,6 +1,7 @@
 // Gestor de carrera: grilla, largada, física de los 20 autos, choques, daños, vueltas, posiciones, rival,
 // contrarreloj, grabación de repetición, surcos en el ripio y visuales.
 import * as THREE from 'three';
+import { t } from './idioma.js';
 import { createCar, stepCar, collideCars, collideBarrier, impactZone, applyDamage, resetCarAt } from './physics.js';
 import { createCarVisual, disposeCarVisual, deformBody, detachParts, breakHeadlight, setHeadlights, setBrakeLights, setDirt, createRivalStar } from './car.js';
 import { AIDriver, buildRacingLine } from './ai.js';
@@ -100,7 +101,7 @@ export class Race {
     if (!this.rival) return;
     const list = TAUNTS[kind]; if (!list) return;
     const txt = list[Math.floor(Math.random() * list.length)].replace('{p}', this.player.name);
-    this.ui.taunt(this.rival.name, txt);
+    this.ui.taunt(this.rival.name, t(txt).replace('{p}', this.player.name));
   }
   sayTaunt(kind, cooldown) { const now = this.time; if (this.lastToast['taunt'] && now - this.lastToast['taunt'] < cooldown) return; this.lastToast['taunt'] = now; this.taunt(kind); }
 
@@ -112,7 +113,7 @@ export class Race {
       const n = Math.floor(this.countT);
       if (n >= 0 && n < RACE.countdown && n !== this.countShown) { this.countShown = n; this.ui.countdown(RACE.countdown - n); this.audio.beep(false); this.world.setStartLights(n + 1, false); }
       if (this.countT >= RACE.countdown) {
-        this.phase = 'racing'; this.raceTime = 0; this.greenTime = 0; this.ui.countdown('¡VAMOS!', true); this.audio.beep(true); this.world.setStartLights(3, true);
+        this.phase = 'racing'; this.raceTime = 0; this.greenTime = 0; this.ui.countdown(t('¡VAMOS!'), true); this.audio.beep(true); this.world.setStartLights(3, true);
         setTimeout(() => this.ui.countdown(null), 900); for (const c of this.cars) c.state.frozen = false; this.audio.cheerNow(0.8);
         if (this.mode !== 'timetrial') setTimeout(() => this.taunt('start'), 2500);
       }
@@ -177,7 +178,7 @@ export class Race {
       if (involved && e.strength > 2.5) this.chase.shake(e.strength / 14);
       if (involved && e.strength > 3) {
         const other = A === this.player ? B : A;
-        const txt = other ? `¡Toque con ${other.name}!` : e.type === 'bale' ? '¡Contra los fardos!' : e.type === 'tires' ? '¡Contra las gomas!' : e.type === 'cow' ? '¡Cuidado con la vaca!' : '¡Contra el poste!';
+        const txt = other ? `${t('¡Toque con')} ${other.name}!` : t(e.type === 'bale' ? '¡Contra los fardos!' : e.type === 'tires' ? '¡Contra las gomas!' : e.type === 'cow' ? '¡Cuidado con la vaca!' : '¡Contra el poste!');
         this.say('hit', txt, 'bad', 1.2);
         if (other && other.ai && Math.random() < 0.35 && other.honkT <= 0) { other.honkT = 4; setTimeout(() => this.audio.horn(0, true), 300); }
         if (other && other.isRival && e.strength > 5) this.sayTaunt('crash', 8);
@@ -238,7 +239,7 @@ export class Race {
         s.raceDist = p;
         if (p >= L - 3 && this.raceTime > 1) {
           s.lapTimes.push(s.lapTime); s.bestLap = s.lapTime; s.lap = 1;
-          if (c.isPlayer) { const ref = this.record ? this.record.bestLap : null; if (ref == null || s.lapTime < ref) { this.record = { bestLap: s.lapTime, splits: [this.curSplits[0], this.curSplits[1]], when: Date.now() }; saveRecord(this.recordKey, this.record); if (ref != null) this.ui.banner('¡RÉCORD DEL TRAMO!', 2200); } }
+          if (c.isPlayer) { const ref = this.record ? this.record.bestLap : null; if (ref == null || s.lapTime < ref) { this.record = { bestLap: s.lapTime, splits: [this.curSplits[0], this.curSplits[1]], when: Date.now() }; saveRecord(this.recordKey, this.record); if (ref != null) this.ui.banner(t('¡RÉCORD DEL TRAMO!'), 2200); } }
           this.finishCar(c);
         }
         c.lastLapProgress = p;
@@ -249,16 +250,16 @@ export class Race {
         s.halfPassed = false;
         if (this.raceTime > 1) {
           s.lap++; s.lapTimes.push(s.lapTime);
-          if (s.bestLap == null || s.lapTime < s.bestLap) { s.bestLap = s.lapTime; if (c.isPlayer && s.lap > 1) this.say('best', `¡Mejor vuelta! ${formatTime(s.lapTime)}`, 'good', 0); }
+          if (s.bestLap == null || s.lapTime < s.bestLap) { s.bestLap = s.lapTime; if (c.isPlayer && s.lap > 1) this.say('best', `${t('¡Mejor vuelta!')} ${formatTime(s.lapTime)}`, 'good', 0); }
           else if (c.isPlayer) this.say('lap', `Vuelta ${formatTime(s.lapTime)}`, '', 0);
           if (c.isPlayer) {
             const ref = this.record ? this.record.bestLap : null;
             this.ui.split(3, s.lapTime, ref == null ? null : s.lapTime - ref);
-            if (ref == null || s.lapTime < ref) { this.record = { bestLap: s.lapTime, splits: [this.curSplits[0], this.curSplits[1]], when: Date.now() }; saveRecord(this.recordKey, this.record); if (ref != null) this.ui.banner('¡RÉCORD DE LA PISTA!', 2200); }
+            if (ref == null || s.lapTime < ref) { this.record = { bestLap: s.lapTime, splits: [this.curSplits[0], this.curSplits[1]], when: Date.now() }; saveRecord(this.recordKey, this.record); if (ref != null) this.ui.banner(t('¡RÉCORD DE LA PISTA!'), 2200); }
             this.curSplits = []; this.sectorIdx = 0;
           }
           s.lapTime = 0;
-          if (c.isPlayer) { this.audio.cheerNow(0.6); this.world.cheerLevel = 0.8; if (s.lap === this.laps - 1) { this.ui.banner('¡ÚLTIMA VUELTA!'); this.sayTaunt('lastLap', 5); } }
+          if (c.isPlayer) { this.audio.cheerNow(0.6); this.world.cheerLevel = 0.8; if (s.lap === this.laps - 1) { this.ui.banner(t('¡ÚLTIMA VUELTA!')); this.sayTaunt('lastLap', 5); } }
           if (s.lap >= this.laps) this.finishCar(c);
         }
       } else if (prev < L * 0.15 && p > L * 0.85 && s.lap > 0) { s.lap--; s.halfPassed = true; }
@@ -272,8 +273,8 @@ export class Race {
     if (c.ai) c.ai.speedFactor *= 0.75;
     if (c.isPlayer) {
       this.playerFinishT = this.raceTime; this.phase = 'finished';
-      if (this.mode === 'timetrial') this.ui.banner(`¡LLEGASTE! ${formatTime(this.raceTime)}`, 4000);
-      else this.ui.banner(`¡LLEGASTE P${c.position}!`, 4000);
+      if (this.mode === 'timetrial') this.ui.banner(`${t('¡LLEGASTE!')} ${formatTime(this.raceTime)}`, 4000);
+      else this.ui.banner(`${t('¡LLEGASTE P')}${c.position}!`, 4000);
       this.audio.cheerNow(1); this.world.cheerLevel = 1.5;
       if (c.position === 1) this.audio.horn(0, false);
       if (this.rival) setTimeout(() => this.taunt(this.rival.state.finished && this.rival.state.finishTime < s.finishTime ? 'finishBehind' : 'finishAhead'), 1500);
@@ -325,11 +326,11 @@ export class Race {
     if (this.phase === 'racing' && !me.state.finished && this.raceTime > 3 && this.mode !== 'timetrial') {
       if (me.position < me.prevPosition) {
         const passed = order[me.position];
-        if (passed) { this.say('pass', `Adelantaste a ${passed.name}`, 'good', 1.5); if (passed.isRival) this.sayTaunt('youPassed', 6); }
+        if (passed) { this.say('pass', `${t('Adelantaste a')} ${passed.name}`, 'good', 1.5); if (passed.isRival) this.sayTaunt('youPassed', 6); }
         if (this.nearGrandstand()) { this.audio.cheerNow(0.7); this.world.cheerLevel = 1; }
       } else if (me.position > me.prevPosition) {
         const by = order[me.position - 2];
-        if (by) { this.say('passed', `Te pasó ${by.name}`, 'bad', 1.5); if (by.isRival) this.sayTaunt('passedYou', 6); }
+        if (by) { this.say('passed', `${t('Te pasó')} ${by.name}`, 'bad', 1.5); if (by.isRival) this.sayTaunt('passedYou', 6); }
       }
     }
   }
@@ -353,8 +354,8 @@ export class Race {
     }
     p.slipstream = dampTo(p.slipstream, slip, 4, dt);
     if (p.surface === 'grass' || p.surface === 'ditch') { this.offTrackT += dt; if (this.offTrackT > 1.2) { this.say('grass', p.surface === 'ditch' ? '¡A la zanja!' : '¡Al pasto!', 'bad', 6); this.offTrackT = -4; } } else this.offTrackT = Math.max(0, this.offTrackT);
-    if (p.landedImpact > 5) { this.audio.landing(p.landedImpact); this.chase.shake(0.4); this.say('jump', '¡Qué salto!', 'good', 5); }
-    if (Math.abs(p.speed) < 2 && this.raceTime > 5 && !p.finished) { this.stuckT += dt; if (this.stuckT > 4) { this.say('stuck', 'Apretá R para volver a la pista', '', 8); this.stuckT = 0; } } else this.stuckT = 0;
+    if (p.landedImpact > 5) { this.audio.landing(p.landedImpact); this.chase.shake(0.4); this.say('jump', t('¡Qué salto!'), 'good', 5); }
+    if (Math.abs(p.speed) < 2 && this.raceTime > 5 && !p.finished) { this.stuckT += dt; if (this.stuckT > 4) { this.say('stuck', t('Apretá R para volver a la pista'), '', 8); this.stuckT = 0; } } else this.stuckT = 0;
     for (const c of this.cars) if (Math.abs(c.state.speed) < 2 && this.raceTime > 6 && !c.state.finished) this.world.raiseFlag(c.state.x, c.state.z, 1);
   }
 

@@ -160,6 +160,17 @@ Fuera del ripio van despacio (9 m/s en la zanja) para poder salir, y un auto per
 5–6 s vuelve al borde de la pista. Se calibra con `herramientas/solo2.mjs` (un auto) y `herramientas/fuera.mjs`
 (20 autos: segundos fuera de pista por vuelta y por sector; `DIF=1.14 CIRCUITO=ovalo REVERSE=1 DIAG=1`).
 
+## Idioma
+
+El juego está en español y en inglés. Se elige en **Ajustes → Idioma** y queda guardado; la primera vez se
+usa el del navegador. `js/idioma.js` tiene el diccionario indexado por el texto en español, así que el código
+sigue leyéndose en español: `t('¡ÚLTIMA VUELTA!')` devuelve la traducción cuando corresponde. Los textos fijos
+de `index.html` los cambia `traducirDOM()`, que recorre el documento, guarda el original en cada nodo y traduce
+textos, marcadores y opciones, así se puede volver al español sin recargar. Se traducen menús, ayuda, taller,
+campeonato, resultados, récords, multijugador, el HUD, los carteles de carrera, las provocaciones del rival,
+los nombres de las fechas, de las pistas y de los sectores. Quedan en español los nombres de los pilotos y los
+carteles de publicidad de la pista, que son parte del ambiente.
+
 ## Rendimiento
 
 Dibujar 20 autos era el 87 % del costo de cada cuadro: cada Fitito se armaba con 144 mallas sueltas

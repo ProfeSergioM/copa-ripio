@@ -1,5 +1,6 @@
 // Interfaz: pantallas, HUD (velocímetro, minimapa, daños, orden, rival), taller, avisos, resultados y tablas.
 import { formatTime, clamp, lerp } from './util.js';
+import { t } from './idioma.js';
 import { UPGRADES, REPAIR_FULL } from './championship.js';
 
 const $ = (id) => document.getElementById(id);
@@ -42,7 +43,7 @@ export class UI {
     if (rv !== this.lastRival) { $('hud-rival').innerHTML = rv; $('hud-rival').classList.toggle('hidden', !rv); this.lastRival = rv; }
     $('arrow-l').classList.toggle('hidden', !d.arrowL); $('arrow-r').classList.toggle('hidden', !d.arrowR);
     $('hud-stage').classList.toggle('hidden', !d.timetrial);
-    if (d.timetrial) { $('hud-sector').textContent = d.sector; $('hud-stagebar').style.width = `${Math.round(clamp(d.progress, 0, 1) * 100)}%`; }
+    if (d.timetrial) { $('hud-sector').textContent = t(d.sector); $('hud-stagebar').style.width = `${Math.round(clamp(d.progress, 0, 1) * 100)}%`; }
   }
 
   drawSpeedo(kmh, rpmFrac, dt) {
@@ -137,35 +138,35 @@ export class UI {
 
   // ---------- Tablas ----------
   renderStandings(rows, playerName) {
-    let h = '<table><tr><th>#</th><th>Piloto</th><th class="num">Pts</th><th class="num">Victorias</th><th class="num">Última</th></tr>';
+    let h = `<table><tr><th>#</th><th>${t('Piloto')}</th><th class="num">${t('Pts')}</th><th class="num">${t('Victorias')}</th><th class="num">${t('Última')}</th></tr>`;
     rows.forEach((r, i) => { h += `<tr class="${r.name === playerName ? 'me' : ''}"><td>${i + 1}</td><td><span class="chip" style="background:${r.color}"></span>${r.name} <small>#${r.number}</small></td><td class="num">${r.points}</td><td class="num">${r.wins}</td><td class="num">${r.last ? 'P' + r.last : '–'}</td></tr>`; });
     $('standings').innerHTML = h + '</table>';
   }
   renderNextRound(champ, ROUNDS) {
     const el = $('next-round'), index = Math.min(champ.round, ROUNDS.length - 1), round = ROUNDS[index];
-    $('champ-money').innerHTML = `Plata: <b>${money(champ.money)}</b> · Daño del auto: <b>${Math.round(champ.damagePct() * 100)} %</b> · Rival de la fecha: <b>${champ.rival || '–'}</b>`;
-    if (champ.done) { el.innerHTML = `<b>Campeonato terminado</b>Podés empezar uno nuevo desde el menú, o correr de nuevo la última fecha.`; $('btn-race').textContent = 'Correr otra vez la última'; }
+    $('champ-money').innerHTML = `${t('Plata')}: <b>${money(champ.money)}</b> · ${t('Daño del auto')}: <b>${Math.round(champ.damagePct() * 100)} %</b> · ${t('Rival de la fecha')}: <b>${champ.rival || '–'}</b>`;
+    if (champ.done) { el.innerHTML = `<b>${t('Campeonato terminado')}</b>${t('Podés empezar uno nuevo desde el menú, o correr de nuevo la última fecha.')}`; $('btn-race').textContent = t('Correr otra vez la última'); }
     else {
-      $('btn-race').textContent = '¡A correr!';
-      const clima = round.weather === 'rain' ? '🌧 lluvia y barro' : '☀ seco';
-      const modo = round.mode === 'timetrial' ? 'contrarreloj, punto a punto' : `${round.laps} vueltas · ${round.reverse ? 'sentido inverso' : 'sentido normal'}`;
-      el.innerHTML = `<b>Fecha ${index + 1} de ${ROUNDS.length}</b>${round.name}<br>${round.desc}<br><small>${modo} · ${clima} · viento ${Math.round(Math.hypot(round.wind[0], round.wind[1]) * 3.6)} km/h</small>`;
+      $('btn-race').textContent = t('¡A correr!');
+      const clima = round.weather === 'rain' ? '🌧 ' + t('lluvia y barro') : '☀ ' + t('seco');
+      const modo = round.mode === 'timetrial' ? t('contrarreloj, punto a punto') : `${round.laps} ${t('vueltas')} · ${t(round.reverse ? 'sentido inverso' : 'sentido normal')}`;
+      el.innerHTML = `<b>${t('Fecha')} ${index + 1} ${t('de')} ${ROUNDS.length}</b>${t(round.name)}<br>${t(round.desc)}<br><small>${modo} · ${clima} · ${t('viento')} ${Math.round(Math.hypot(round.wind[0], round.wind[1]) * 3.6)} km/h</small>`;
     }
-    $('champ-round-title').textContent = `Fecha ${index + 1}/${ROUNDS.length}`;
+    $('champ-round-title').textContent = `${t('Fecha')} ${index + 1}/${ROUNDS.length}`;
   }
   renderResults(results, playerName, pointsTable, prize, mode) {
     const me = results.find(r => r.name === playerName);
-    const frases = ['¡Ganaste! Los fititos de atrás comieron polvo.', '¡Podio! Casi, casi.', '¡Podio! Muy buena carrera.', 'Zona de puntos. Se puede mejorar.', 'Mitad de tabla. El auto quedó para el chapista.', 'Al menos llegaste entero… más o menos.'];
+    const frases = ['¡Ganaste! Los fititos de atrás comieron polvo.', '¡Podio! Casi, casi.', '¡Podio! Muy buena carrera.', 'Zona de puntos. Se puede mejorar.', 'Mitad de tabla. El auto quedó para el chapista.', 'Al menos llegaste entero… más o menos.'].map(t);
     const idx = me.position === 1 ? 0 : me.position === 2 ? 1 : me.position === 3 ? 2 : me.position <= 8 ? 3 : me.position <= 14 ? 4 : 5;
     let extra = '';
     if (prize) {
-      extra = `<br><small>Premio ${money(prize.money)} · +${prize.pts} puntos`;
-      if (prize.rival) extra += prize.beatRival ? ` · ★ Le ganaste a ${prize.rival} (P${prize.rivalPos}): +${5} pts y $500` : ` · ${prize.rival} te ganó (P${prize.rivalPos})`;
-      if (prize.bestLap) extra += ' · Mejor vuelta de la carrera: +$300';
+      extra = `<br><small>${t('Premio')} ${money(prize.money)} · +${prize.pts} ${t('puntos')}`;
+      if (prize.rival) extra += prize.beatRival ? ` · ★ ${t('Le ganaste a')} ${prize.rival} (P${prize.rivalPos}): +${5} ${t('pts y')} $500` : ` · ${prize.rival} ${t('te ganó')} (P${prize.rivalPos})`;
+      if (prize.bestLap) extra += ' · ' + t('Mejor vuelta de la carrera: +$300');
       extra += '</small>';
     }
-    $('results-summary').innerHTML = `${mode === 'timetrial' ? `Tu tiempo <b>${formatTime(me.time)}</b> · ` : ''}Terminaste <b>P${me.position}</b> · ${frases[idx]}${extra}`;
-    let h = `<table><tr><th>Pos</th><th>Piloto</th><th class="num">${mode === 'timetrial' ? 'Tiempo del tramo' : 'Tiempo'}</th><th class="num">Mejor vuelta</th><th class="num">Daño</th><th class="num">Pts</th></tr>`;
+    $('results-summary').innerHTML = `${mode === 'timetrial' ? `${t('Tu tiempo')} <b>${formatTime(me.time)}</b> · ` : ''}${t('Terminaste')} <b>P${me.position}</b> · ${frases[idx]}${extra}`;
+    let h = `<table><tr><th>${t('Pos')}</th><th>${t('Piloto')}</th><th class="num">${t(mode === 'timetrial' ? 'Tiempo del tramo' : 'Tiempo')}</th><th class="num">${t('Mejor vuelta')}</th><th class="num">${t('Daño')}</th><th class="num">${t('Pts')}</th></tr>`;
     for (const r of results) {
       h += `<tr class="${r.name === playerName ? 'me' : ''}"><td>${r.position}</td><td><span class="chip" style="background:${r.color}"></span>${r.name}</td><td class="num">${formatTime(r.time)}${r.finished ? '' : ' <small>(est.)</small>'}</td><td class="num">${mode === 'timetrial' ? '–' : formatTime(r.bestLap)}</td><td class="num">${r.damage ? Math.round((r.damage.front + r.damage.rear + r.damage.left + r.damage.right) / 4 * 100) + '%' : '–'}</td><td class="num">${(pointsTable[r.position - 1] || 0) + (r.name === playerName && prize && prize.beatRival ? 5 : 0)}</td></tr>`;
     }
@@ -175,11 +176,11 @@ export class UI {
   // ---------- Récords personales ----------
   renderRecords(CIRCUITS) {
     let all = {}; try { all = JSON.parse(localStorage.getItem('coparipio.records') || '{}'); } catch (e) { /* nada */ }
-    const rows = Object.entries(all).map(([k, r]) => { const [id, dir, mode] = k.split('|'); return { track: (CIRCUITS[id] || { name: id }).name, dir: dir === 'inv' ? 'inverso' : 'normal', mode: mode === 'timetrial' ? 'contrarreloj' : 'carrera', best: r.bestLap, s1: r.splits && r.splits[0], s2: r.splits && r.splits[1], when: r.when }; });
+    const rows = Object.entries(all).map(([k, r]) => { const [id, dir, mode] = k.split('|'); return { track: t((CIRCUITS[id] || { name: id }).name), dir: t(dir === 'inv' ? 'inverso' : 'normal'), mode: t(mode === 'timetrial' ? 'contrarreloj' : 'carrera'), best: r.bestLap, s1: r.splits && r.splits[0], s2: r.splits && r.splits[1], when: r.when }; });
     rows.sort((a, b) => a.track.localeCompare(b.track) || a.dir.localeCompare(b.dir));
-    let h = '<table><tr><th>Pista</th><th>Sentido</th><th>Modo</th><th class="num">Mejor vuelta</th><th class="num">S1</th><th class="num">S2</th><th>Fecha</th></tr>';
+    let h = `<table><tr><th>${t('Pista')}</th><th>${t('Sentido')}</th><th>${t('Modo')}</th><th class="num">${t('Mejor vuelta')}</th><th class="num">S1</th><th class="num">S2</th><th>${t('Fecha')}</th></tr>`;
     for (const r of rows) h += `<tr><td>${r.track}</td><td>${r.dir}</td><td>${r.mode}</td><td class="num"><b>${formatTime(r.best)}</b></td><td class="num">${r.s1 != null ? r.s1.toFixed(2) : '–'}</td><td class="num">${r.s2 != null ? r.s2.toFixed(2) : '–'}</td><td>${r.when ? new Date(r.when).toLocaleDateString('es-AR') : '–'}</td></tr>`;
-    if (!rows.length) h += '<tr><td colspan="7">Todavía no hay récords. Salí a girar.</td></tr>';
+    if (!rows.length) h += `<tr><td colspan="7">${t('Todavía no hay récords. Salí a girar.')}</td></tr>`;
     $('records-table').innerHTML = h + '</table>';
   }
 
@@ -190,23 +191,23 @@ export class UI {
     $('ws-money').textContent = money(champ.money);
     $('ws-front').style.fill = col(d.front); $('ws-rear').style.fill = col(d.rear); $('ws-left').style.fill = col(d.left); $('ws-right').style.fill = col(d.right);
     const cost = champ.repairCost();
-    $('ws-damage').textContent = `Daño ${Math.round(champ.damagePct() * 100)} %`;
+    $('ws-damage').textContent = `${t('Daño')} ${Math.round(champ.damagePct() * 100)} %`;
     const btn = $('btn-repair');
-    if (cost <= 0) { btn.textContent = 'El auto está impecable'; btn.disabled = true; }
-    else if (champ.money >= cost) { btn.textContent = `Reparar todo (${money(cost)})`; btn.disabled = false; }
-    else if (champ.money > 0) { btn.textContent = `Reparar lo que alcance (${money(champ.money)} de ${money(cost)})`; btn.disabled = false; }
-    else { btn.textContent = `Sin plata para reparar (${money(cost)}). Corrés con el auto así.`; btn.disabled = true; }
+    if (cost <= 0) { btn.textContent = t('El auto está impecable'); btn.disabled = true; }
+    else if (champ.money >= cost) { btn.textContent = `${t('Reparar todo')} (${money(cost)})`; btn.disabled = false; }
+    else if (champ.money > 0) { btn.textContent = `${t('Reparar lo que alcance')} (${money(champ.money)} ${t('de')} ${money(cost)})`; btn.disabled = false; }
+    else { btn.textContent = `${t('Sin plata para reparar')} (${money(cost)}). ${t('Corrés con el auto así.')}`; btn.disabled = true; }
     btn.onclick = () => { handlers.repair(); };
     let h = '';
     for (const [key, u] of Object.entries(UPGRADES)) {
       const l = champ.upgrades[key], max = u.costs.length;
       const next = l < max ? u.costs[l] : null;
-      h += `<div class="upgrade"><div><b>${u.name}</b> <span class="lvl">${'●'.repeat(l)}${'○'.repeat(max - l)}</span><br><small>${u.desc}</small></div>
-        <button class="btn ${champ.canBuy(key) ? 'primary' : ''}" data-key="${key}" ${champ.canBuy(key) ? '' : 'disabled'}>${next == null ? 'Al máximo' : money(next)}</button></div>`;
+      h += `<div class="upgrade"><div><b>${t(u.name)}</b> <span class="lvl">${'●'.repeat(l)}${'○'.repeat(max - l)}</span><br><small>${t(u.desc)}</small></div>
+        <button class="btn ${champ.canBuy(key) ? 'primary' : ''}" data-key="${key}" ${champ.canBuy(key) ? '' : 'disabled'}>${next == null ? t('Al máximo') : money(next)}</button></div>`;
     }
     $('upgrades').innerHTML = h;
     $('upgrades').querySelectorAll('button').forEach(b => { b.onclick = () => handlers.buy(b.dataset.key); });
-    $('ws-note').textContent = champ.damagePct() > 0.05 && champ.money < cost ? 'Si no reparás, corrés con las abolladuras: el volante tira, el motor falla y las piezas sueltas se caen.' : 'Los premios llegan al terminar cada fecha. Ganarle a tu rival paga $500 extra.';
+    $('ws-note').textContent = champ.damagePct() > 0.05 && champ.money < cost ? t('Si no reparás, corrés con las abolladuras: el volante tira, el motor falla y las piezas sueltas se caen.') : t('Los premios llegan al terminar cada fecha. Ganarle a tu rival paga $500 extra.');
   }
 
   // ---------- Taller estético ----------
@@ -225,7 +226,7 @@ export class UI {
     };
     mk(ids.color, 'color'); mk(ids.roof, 'roofColor');
     $(ids.name).value = spec.name; $(ids.number).value = spec.number; $(ids.stripes).checked = !!spec.stripes;
-    $(ids.name).oninput = (e) => { spec.name = e.target.value.trim() || 'Vos'; onChange(); };
+    $(ids.name).oninput = (e) => { spec.name = e.target.value.trim() || t('Vos'); onChange(); };
     $(ids.number).onchange = (e) => { spec.number = clamp(parseInt(e.target.value) || 7, 1, 99); e.target.value = spec.number; onChange(); };
     $(ids.stripes).onchange = (e) => { spec.stripes = e.target.checked; onChange(); };
     if (ids.accessory) { $(ids.accessory).value = spec.accessory; $(ids.accessory).onchange = (e) => { spec.accessory = e.target.value; onChange(); }; }

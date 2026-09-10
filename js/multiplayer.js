@@ -2,6 +2,7 @@
 // El anfitrión simula los rivales de IA y su propio auto; cada invitado simula solo el suyo. Todo lo demás
 // llega por red y se interpola. Los choques contra autos de otros se resuelven localmente (ellos no se mueven).
 import { Net, randomCode } from './net.js';
+import { t } from './idioma.js';
 import { LIVERY_COLORS } from './config.js';
 import { ROUNDS } from './championship.js';
 import { mulberry32, wrapAngle, lerp, clamp } from './util.js';
@@ -26,10 +27,10 @@ export class Multiplayer {
     n.on('update', (m, from) => { if (this.net.role !== 'host') return; const p = this.players.find(x => x.id === from); if (p) { p.name = m.name; p.spec = m.spec; this.broadcastLobby(); } });
     n.on('leave', (_, from) => { this.players = this.players.filter(p => p.id !== from); this.broadcastLobby(); if (this.race) this.dropCar(from); });
     n.on('lobby', (m) => { if (this.net.role === 'guest') { this.players = m.players.map(p => ({ ...p, local: p.id === this.net.myId })); this.roundIdx = m.roundIdx; this.onLobby && this.onLobby(); } });
-    n.on('welcome', (m) => { this.status = 'Conectado. Esperando que el anfitrión largue…'; this.onLobby && this.onLobby(); });
-    n.on('full', () => { this.status = 'La sala está llena.'; this.net.close(); this.players = []; this.onLobby && this.onLobby(); });
-    n.on('dup', () => { this.status = 'Ya estás en esta sala desde este dispositivo (otra pestaña o ventana). Usá esa.'; this.net.close(); this.players = []; this.onLobby && this.onLobby(); });
-    n.on('hostgone', () => { this.status = 'El anfitrión se fue.'; this.onLobby && this.onLobby(); if (this.active) this.onHostGone && this.onHostGone(); });
+    n.on('welcome', (m) => { this.status = t('Conectado. Esperando que el anfitrión largue…'); this.onLobby && this.onLobby(); });
+    n.on('full', () => { this.status = t('La sala está llena.'); this.net.close(); this.players = []; this.onLobby && this.onLobby(); });
+    n.on('dup', () => { this.status = t('Ya estás en esta sala desde este dispositivo (otra pestaña o ventana). Usá esa.'); this.net.close(); this.players = []; this.onLobby && this.onLobby(); });
+    n.on('hostgone', () => { this.status = t('El anfitrión se fue.'); this.onLobby && this.onLobby(); if (this.active) this.onHostGone && this.onHostGone(); });
     n.on('start', (m) => { if (this.net.role === 'guest') { this.players = m.players.map(p => ({ ...p, local: p.id === this.net.myId })); this.onStart && this.onStart(m); } });
     n.on('ready', (_, from) => { this.ready.add(from); this.tryGo(); });
     n.on('go', () => { if (this.net.role === 'guest' && this.race) this.race.begin(); });
@@ -43,16 +44,16 @@ export class Multiplayer {
   createRoom(name, spec, cb, custom) {
     const code = custom || randomCode();
     this.players = [{ id: 'host', name, spec: { ...spec }, device: deviceId(), local: true }]; this.roundIdx = 0;
-    this.status = 'Creando sala…';
-    this.net.host(code, () => { this.status = `Sala ${code}. Pasá el código a tus amigos.`; cb && cb(null, code); this.onLobby && this.onLobby(); }, (e) => {
-      this.status = e && e.type === 'unavailable-id' ? `El código ${code} ya está en uso. Elegí otro.` : 'No se pudo crear la sala: ' + (e.type || e.message || e);
+    this.status = t('Creando sala…');
+    this.net.host(code, () => { this.status = `${t('Sala')} ${code}. ${t('Pasá el código a tus amigos.')}`; cb && cb(null, code); this.onLobby && this.onLobby(); }, (e) => {
+      this.status = e && e.type === 'unavailable-id' ? `${t('El código')} ${code} ${t('ya está en uso. Elegí otro.')}` : t('No se pudo crear la sala: ') + (e.type || e.message || e);
       this.net.close(); this.players = []; cb && cb(e); this.onLobby && this.onLobby();
     });
   }
   joinRoom(code, name, spec, cb) {
-    this.status = 'Buscando la sala ' + code + '…';
+    this.status = t('Buscando la sala') + ' ' + code + '…';
     this.net.join(code, () => { this.net.sendHost({ t: 'hello', name, spec: { ...spec }, device: deviceId() }); cb && cb(null); }, (e) => {
-      this.status = e && e.type === 'peer-unavailable' ? `No hay ninguna sala ${code}.` : 'No se pudo entrar: ' + (e.type || e.message || e);
+      this.status = e && e.type === 'peer-unavailable' ? `${t('No hay ninguna sala')} ${code}.` : t('No se pudo entrar: ') + (e.type || e.message || e);
       this.net.close(); this.players = []; cb && cb(e); this.onLobby && this.onLobby();
     });
   }
@@ -95,7 +96,7 @@ export class Multiplayer {
     const roster = players.map((p, i) => {
       const spec = p.spec || {};
       let num = spec.number || 7; while (used.has(num)) num = 1 + Math.floor(rnd() * 99); used.add(num);
-      let nombre = (p.name || '').trim() || `Jugador ${i + 1}`;
+      let nombre = (p.name || '').trim() || `${t('Jugador')} ${i + 1}`;
       if (nombres.has(nombre)) { let k = 2; while (nombres.has(`${nombre} ${k}`)) k++; nombre = `${nombre} ${k}`; }
       nombres.add(nombre);
       return { name: nombre, isPlayer: p.id === localId, isHuman: true, netId: p.id, color: spec.color || LIVERY_COLORS[i], roofColor: spec.roofColor || spec.color, number: num, accessory: spec.accessory || 'none', stripes: !!spec.stripes, helmetColor: '#e2a33b', skill: 1, aggression: 0.5, seed: 1 + i };

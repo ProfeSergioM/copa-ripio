@@ -12,6 +12,7 @@ import { Championship, ROUNDS, POINTS, makeRoster } from './championship.js';
 import { computeStageTimes } from './stage.js';
 import { LIVERY_COLORS, KEYS } from './config.js';
 import { clamp, lerp } from './util.js';
+import { t, setIdioma, traducirDOM, idiomaDelNavegador, idiomaActual } from './idioma.js';
 import { STRIDE } from './replay.js';
 import { Multiplayer } from './multiplayer.js';
 
@@ -29,6 +30,14 @@ const app = {
 
 function loadSettings() {
   try { const s = JSON.parse(localStorage.getItem(SETTINGS_KEY)); if (s) { Object.assign(app.settings, s.settings || {}); Object.assign(app.playerSpec, s.playerSpec || {}); } } catch (e) { /* nada */ }
+  if (!app.settings.idioma) app.settings.idioma = idiomaDelNavegador(); // primera vez: el del navegador
+  aplicarIdioma(app.settings.idioma);
+}
+// Cambia el idioma y vuelve a traducir la pantalla (los textos dinámicos ya pasan por t())
+function aplicarIdioma(cod) {
+  setIdioma(cod);
+  traducirDOM();
+  if (app.playerSpec && (app.playerSpec.name === 'Vos' || app.playerSpec.name === 'You')) app.playerSpec.name = t('Vos');
 }
 function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ settings: app.settings, playerSpec: app.playerSpec })); } catch (e) { /* nada */ } }
 
@@ -75,7 +84,7 @@ async function init() {
   app.audio.volume = app.settings.volume; app.audio.musicOn = app.settings.music;
   app.chase = new ChaseCamera(camera, null);
   app.mp = new Multiplayer(app); app.mp.onLobby = renderLobby; app.mp.onStart = startMultiplayerRace; app.mp.onResults = onMpResults; app.mp.onHostGone = () => {
-    app.ui.toast('El anfitrión se desconectó: la carrera sigue sola', 'bad', 5000);
+    app.ui.toast(t('El anfitrión se desconectó: la carrera sigue sola'), 'bad', 5000);
     // el invitado pasa a decidir sus propios resultados: si no, esperaría para siempre
     const r = app.race;
     if (r && r.netGuest) {
@@ -86,7 +95,7 @@ async function init() {
   };
   app.champ = Championship.load();
   const round = app.champ ? app.champ.current : ROUNDS[0];
-  ui.setLoading(0.05, 'Trazando la pista');
+  ui.setLoading(0.05, t('Trazando la pista'));
   await new Promise(r => setTimeout(r, 20));
   await prepareWorld(round, (f, txt) => ui.setLoading(0.1 + f * 0.85, txt));
 
@@ -94,12 +103,12 @@ async function init() {
   bindInput();
   $('btn-continue').disabled = !app.champ;
   showcase();
-  ui.setLoading(1, 'Listo');
+  ui.setLoading(1, t('¡Listo!'));
   setTimeout(() => { ui.showScreen('menu'); app.state = 'menu'; }, 300);
   // llegó por un link de sala (?sala=CODIGO): abre Multijugador y entra solo
   const salaLink = new URLSearchParams(location.search).get('sala');
   if (salaLink && CODE_RE.test(salaLink.toUpperCase())) {
-    setTimeout(() => { showMp(); $('mp-code').value = salaLink.toUpperCase(); app.mp.status = `Entrando a la sala ${salaLink.toUpperCase()}…`; renderLobby(); $('btn-mp-join').click(); }, 700);
+    setTimeout(() => { showMp(); $('mp-code').value = salaLink.toUpperCase(); app.mp.status = `${t('Entrando a la sala')} ${salaLink.toUpperCase()}…`; renderLobby(); $('btn-mp-join').click(); }, 700);
   }
   requestAnimationFrame(loop);
 }
@@ -125,18 +134,18 @@ async function startRace(quick = false) {
   if (quick) { // hora y clima al azar
     const tods = ['morning', 'noon', 'sunset', 'dusk', 'fog', 'storm'];
     const tod = tods[Math.floor(Math.random() * tods.length)];
-    base = { ...base, tod, weather: tod === 'storm' ? 'rain' : (Math.random() < 0.15 ? 'rain' : 'dry'), reverse: Math.random() < 0.4, name: base.name + ' (carrera rápida)' };
+    base = { ...base, tod, weather: tod === 'storm' ? 'rain' : (Math.random() < 0.15 ? 'rain' : 'dry'), reverse: Math.random() < 0.4, name: base.name + t(' (carrera rápida)') };
     if (base.weather === 'rain' && base.tod !== 'storm') base.tod = 'storm';
   }
   const round = { ...base, laps: base.mode === 'timetrial' ? 1 : (roundIdx === ROUNDS.length - 1 ? app.settings.laps + 1 : base.laps === 5 ? app.settings.laps + 2 : app.settings.laps) };
-  app.ui.showScreen('loading'); app.ui.setLoading(0.05, 'Armando la fecha'); app.state = 'loading';
+  app.ui.showScreen('loading'); app.ui.setLoading(0.05, t('Armando la fecha')); app.state = 'loading';
   await new Promise(r => setTimeout(r, 30));
   if (app.race) { app.race.dispose(); app.race = null; }
   await prepareWorld(round, (f, txt) => app.ui.setLoading(0.1 + f * 0.6, txt));
   let stageTimes = {};
   if (round.mode === 'timetrial') {
-    app.ui.setLoading(0.72, 'Los rivales corren su tramo');
-    stageTimes = await computeStageTimes(app.track, champ.roster, app.settings.difficulty, (f, name) => app.ui.setLoading(0.72 + f * 0.26, `Corre ${name}`));
+    app.ui.setLoading(0.72, t('Los rivales corren su tramo'));
+    stageTimes = await computeStageTimes(app.track, champ.roster, app.settings.difficulty, (f, name) => app.ui.setLoading(0.72 + f * 0.26, `${t('Corre')} ${name}`));
   }
   champ.pickRival(); champ.save();
   app.race = new Race({ scene: app.scene, track: app.track, world: app.world, audio: app.audio, particles: app.particles, debris: app.debris, ui: app.ui, settings: app.settings, roster: champ.roster, round, gridOrder: champ.gridOrder(), chase: app.chase, champ, stageTimes });
@@ -159,7 +168,7 @@ function finishResults(results) {
   const bestLapOverall = [...results].filter(r => r.bestLap != null).sort((a, b) => a.bestLap - b.bestLap)[0];
   const champ = app.quick ? app.quickChamp : app.champ;
   const prize = champ.applyResults(results, { bestLapOverall: bestLapOverall ? bestLapOverall.name : null });
-  $('btn-results-ok').textContent = app.quick ? 'Volver al menú' : 'Ver campeonato';
+  $('btn-results-ok').textContent = t(app.quick ? 'Volver al menú' : 'Ver campeonato');
   app.lastResults = results;
   app.ui.renderResults(results, app.playerSpec.name, POINTS, prize, app.race.mode);
   $('btn-replay').disabled = app.race.replay.frames.length < 40;
@@ -195,23 +204,24 @@ const CODE_RE = /^[A-Z0-9]{3,10}$/;
 function roomLink(code) { const u = new URL(location.href); u.search = ''; u.hash = ''; u.searchParams.set('sala', code); return u.toString(); }
 function readCode(id) { const v = $(id).value.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''); $(id).value = v; return v; }
 function showMp() {
-  const sel = $('mp-round'); if (!sel.options.length) ROUNDS.forEach((r, i) => { if (r.mode !== 'timetrial') { const o = document.createElement('option'); o.value = i; o.textContent = `${r.name} · ${r.laps} vueltas`; sel.appendChild(o); } });
+  const sel = $('mp-round'); const previo = sel.value; sel.innerHTML = ''; ROUNDS.forEach((r, i) => { if (r.mode !== 'timetrial') { const o = document.createElement('option'); o.value = i; o.textContent = `${t(r.name)} · ${r.laps} ${t('vueltas')}`; sel.appendChild(o); } });
   app.ui.initPilotForm({ name: 'mp-name', number: 'mp-number', color: 'mp-color-swatches', roof: 'mp-roof-swatches', stripes: 'mp-stripes' }, app.playerSpec, LIVERY_COLORS, () => { applyPlayerSpec(); app.mp.updateSelf(app.playerSpec.name, app.playerSpec); renderLobby(); });
+  if (previo) sel.value = previo;
   app.ui.showScreen('mp'); app.state = 'menu'; renderLobby();
 }
 function renderLobby() {
   const mp = app.mp, host = mp.net.role === 'host', inRoom = !!mp.net.role;
-  $('mp-status').textContent = mp.status || 'Creá una sala o entrá con un código.';
+  $('mp-status').textContent = mp.status || t('Creá una sala o entrá con un código.');
   $('mp-setup').classList.toggle('hidden', inRoom);
   $('mp-room').classList.toggle('hidden', !inRoom);
   $('mp-codebig').textContent = mp.net.code || '';
   // link para compartir: quien lo abre entra directo a la sala
   const link = mp.net.code ? roomLink(mp.net.code) : '';
   $('mp-link').value = link;
-  $('mp-wa').href = link ? 'https://wa.me/?text=' + encodeURIComponent(`¡Carrera de Fiat 600! Entrá a mi sala de Formula 600: ${link}`) : '#';
+  $('mp-wa').href = link ? 'https://wa.me/?text=' + encodeURIComponent(`${t('¡Carrera de Fiat 600! Entrá a mi sala de Formula 600:')} ${link}`) : '#';
   $('btn-mp-share').classList.toggle('hidden', !navigator.share);
   const esc = (t) => String(t).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
-  $('mp-players').innerHTML = mp.players.map(p => { const sp = p.spec || {}; return `<div class="order-row${p.local ? ' me' : ''}"><span class="chip" style="background:${sp.color || '#888'}"></span><span class="p">#${sp.number || '?'}</span><span>${esc(p.name)}${p.id === 'host' ? ' (anfitrión)' : ''}${p.local ? ' (vos)' : ''}</span></div>`; }).join('') || '<i>Nadie todavía</i>';
+  $('mp-players').innerHTML = mp.players.map(p => { const sp = p.spec || {}; return `<div class="order-row${p.local ? ' me' : ''}"><span class="chip" style="background:${sp.color || '#888'}"></span><span class="p">#${sp.number || '?'}</span><span>${esc(p.name)}${p.id === 'host' ? ' ' + t('(anfitrión)') : ''}${p.local ? ' ' + t('(vos)') : ''}</span></div>`; }).join('') || `<i>${t('Nadie todavía')}</i>`;
   $('mp-round').disabled = !host; $('mp-round').value = String(mp.roundIdx || 0);
   $('btn-mp-start').classList.toggle('hidden', !host);
   $('mp-hostnote').classList.toggle('hidden', host);
@@ -220,7 +230,7 @@ async function startMultiplayerRace(payload) {
   const mp = app.mp;
   const round = { ...ROUNDS[payload.roundIdx] };
   app.mpActive = true; app.quick = true;
-  app.ui.showScreen('loading'); app.ui.setLoading(0.05, 'Armando la carrera en red'); app.state = 'loading';
+  app.ui.showScreen('loading'); app.ui.setLoading(0.05, t('Armando la carrera en red')); app.state = 'loading';
   await new Promise(r => setTimeout(r, 30));
   if (app.race) { app.race.dispose(); app.race = null; }
   await prepareWorld(round, (f, txt) => app.ui.setLoading(0.1 + f * 0.8, txt));
@@ -234,7 +244,7 @@ async function startMultiplayerRace(payload) {
   app.ui.showScreen(null); app.ui.showHUD(true); showTouch(true);
   app.state = 'race';
   app.audio.init();
-  app.ui.banner(mp.isHost ? 'ESPERANDO A LOS DEMÁS…' : 'ESPERANDO LA LARGADA…', 6000);
+  app.ui.banner(t(mp.isHost ? 'ESPERANDO A LOS DEMÁS…' : 'ESPERANDO LA LARGADA…'), 6000);
   mp.markReady();
 }
 function onMpResults(results) {
@@ -259,7 +269,7 @@ function startPodium(results) {
   top.forEach((c, i) => { const v = c.vis.root; const wx = cx + Math.cos(s.heading) * offs[i], wz = cz - Math.sin(s.heading) * offs[i]; v.position.set(wx, base + heights[i], wz); v.rotation.y = s.heading; c.vis.vis.rotation.set(0, 0, 0); c.state.x = wx; c.state.z = wz; });
   app.podium = { pod, t: 0, cx, cz, base, heading: s.heading, dur: 8 };
   app.state = 'podium'; app.ui.showScreen(null);
-  app.ui.overlay('replay-overlay', true, `PODIO · 1° ${results[0].name}`); $('replay-overlay').classList.add('letterbox');
+  app.ui.overlay('replay-overlay', true, `${t('PODIO · 1°')} ${results[0].name}`); $('replay-overlay').classList.add('letterbox');
   app.audio.state = 'replay'; app.audio.cheerNow(1.5); world.cheerLevel = 2;
   for (let k = 0; k < 3; k++) setTimeout(() => app.audio.horn(Math.random() - 0.5, true), 400 + k * 700);
   app.podiumResults = results;
@@ -288,8 +298,8 @@ function startReplay() {
   const segs = [];
   const best = rp.bestMoment();
   const finishT = race.playerFinishT != null ? race.playerFinishT : rp.duration;
-  if (best && best.strength > 4) segs.push({ from: Math.max(rp.start, best.time - 5), to: Math.min(rp.duration, best.time + 5), text: best.player ? 'EL GOLPE GRANDE' : 'EL CHOQUE DEL DÍA', cam: 'tv' });
-  segs.push({ from: Math.max(rp.start, finishT - 8), to: Math.min(rp.duration, finishT + 2.5), text: 'LA LLEGADA', cam: 'tv' });
+  if (best && best.strength > 4) segs.push({ from: Math.max(rp.start, best.time - 5), to: Math.min(rp.duration, best.time + 5), text: t(best.player ? 'EL GOLPE GRANDE' : 'EL CHOQUE DEL DÍA'), cam: 'tv' });
+  segs.push({ from: Math.max(rp.start, finishT - 8), to: Math.min(rp.duration, finishT + 2.5), text: t('LA LLEGADA'), cam: 'tv' });
   app.replay = { segs, i: 0, t: segs[0].from, frame: new Float32Array(race.cars.length * STRIDE), prev: null };
   app.state = 'replay';
   app.ui.showScreen(null); app.ui.showHUD(false);
@@ -339,7 +349,7 @@ function savePhoto() {
   app.renderer.render(app.scene, app.camera);
   const url = app.renderer.domElement.toDataURL('image/png');
   const a = document.createElement('a'); a.href = url; a.download = `formula600-${Date.now()}.png`; document.body.appendChild(a); a.click(); a.remove();
-  app.ui.overlay('photo-overlay', true, '¡Foto guardada!');
+  app.ui.overlay('photo-overlay', true, t('¡Foto guardada!'));
   setTimeout(() => { if (app.state === 'photo') app.ui.overlay('photo-overlay', true, ''); }, 1500);
 }
 
@@ -348,7 +358,7 @@ function bindUI() {
   const gesture = () => app.audio.init();
   document.addEventListener('pointerdown', gesture, { once: true }); document.addEventListener('keydown', gesture, { once: true });
   $('btn-continue').onclick = () => { showChampionship(); };
-  $('btn-new').onclick = () => { if (app.champ && !confirm('¿Empezar un campeonato nuevo? Se borra el actual.')) return; Championship.clear(); app.champ = new Championship(makeRoster(app.playerSpec)); app.champ.save(); showChampionship(); showcase(); };
+  $('btn-new').onclick = () => { if (app.champ && !confirm(t('¿Empezar un campeonato nuevo? Se borra el actual.'))) return; Championship.clear(); app.champ = new Championship(makeRoster(app.playerSpec)); app.champ.save(); showChampionship(); showcase(); };
   $('btn-garage').onclick = () => { ui.initGarage(app.playerSpec, LIVERY_COLORS, () => applyPlayerSpec()); ui.showScreen('garage'); app.orbitCar = true; };
   $('btn-garage-back').onclick = () => {
     app.orbitCar = false;
@@ -356,10 +366,11 @@ function bindUI() {
     if (app.champ) { const me = app.champ.roster[0]; Object.assign(me, { color: app.playerSpec.color, roofColor: app.playerSpec.roofColor, accessory: app.playerSpec.accessory, stripes: app.playerSpec.stripes, number: app.playerSpec.number }); const row = app.champ.table.find(t => t.name === me.name); if (row) { row.color = me.color; row.number = me.number; } app.champ.save(); }
     showcase(); ui.showScreen('menu');
   };
-  const fillEngine = () => { const sel = $('in-engine'); if (!sel.options.length) for (const [k, v] of Object.entries(ENGINE_PROFILES)) { const o = document.createElement('option'); o.value = k; o.textContent = v.name; sel.appendChild(o); } sel.value = app.settings.engine || 'preparado'; $('engine-desc').textContent = (ENGINE_PROFILES[sel.value] || {}).desc || ''; };
-  $('in-engine').onchange = (e) => { app.settings.engine = e.target.value; app.audio.setEngineProfile(app.settings.engine); $('engine-desc').textContent = ENGINE_PROFILES[app.settings.engine].desc; saveSettings(); };
+  const fillEngine = () => { const sel = $('in-engine'); sel.innerHTML = ''; for (const [k, v] of Object.entries(ENGINE_PROFILES)) { const o = document.createElement('option'); o.value = k; o.textContent = t(v.name); sel.appendChild(o); } sel.value = app.settings.engine || 'preparado'; $('engine-desc').textContent = t((ENGINE_PROFILES[sel.value] || {}).desc || ''); };
+  $('in-engine').onchange = (e) => { app.settings.engine = e.target.value; app.audio.setEngineProfile(app.settings.engine); $('engine-desc').textContent = t(ENGINE_PROFILES[app.settings.engine].desc); saveSettings(); };
   $('btn-engine-test').onclick = () => { app.audio.init(); app.audio.setEngineProfile(app.settings.engine || 'preparado'); app.audio.previewEngine(); };
-  $('btn-settings').onclick = () => { fillEngine(); $('in-difficulty').value = String(app.settings.difficulty); $('in-volume').value = app.settings.volume; $('in-music').checked = app.settings.music; $('in-shadows').checked = app.settings.shadows; $('in-laps').value = app.settings.laps; ui.showScreen('settings'); };
+  $('in-idioma').onchange = (e) => { app.settings.idioma = e.target.value; aplicarIdioma(app.settings.idioma); fillEngine(); saveSettings(); if (app.champ) ui.renderNextRound(app.champ, ROUNDS); };
+  $('btn-settings').onclick = () => { $('in-idioma').value = idiomaActual(); fillEngine(); $('in-difficulty').value = String(app.settings.difficulty); $('in-volume').value = app.settings.volume; $('in-music').checked = app.settings.music; $('in-shadows').checked = app.settings.shadows; $('in-laps').value = app.settings.laps; ui.showScreen('settings'); };
   $('btn-settings-back').onclick = () => {
     app.settings.difficulty = parseFloat($('in-difficulty').value); app.settings.volume = parseFloat($('in-volume').value); app.settings.music = $('in-music').checked; app.settings.shadows = $('in-shadows').checked; app.settings.laps = parseInt($('in-laps').value);
     app.audio.setVolume(app.settings.volume); app.audio.musicOn = app.settings.music; app.renderer.shadowMap.enabled = app.settings.shadows; app.scene.traverse(o => { if (o.material) o.material.needsUpdate = true; });
@@ -378,10 +389,10 @@ function bindUI() {
   $('btn-results-ok').onclick = () => { showcase(); if (app.mpActive) { app.mpActive = false; app.quick = false; app.mp.race = null; app.mp.active = false; showMp(); } else if (app.quick) { app.quick = false; app.ui.showScreen('menu'); app.state = 'menu'; } else showChampionship(); };
   $('btn-mp').onclick = () => showMp();
   $('btn-mp-back').onclick = () => { app.mp.leave(); app.ui.showScreen('menu'); };
-  $('btn-mp-create').onclick = () => { app.audio.init(); const custom = readCode('mp-newcode'); if (custom && !CODE_RE.test(custom)) { app.mp.status = 'El código: de 3 a 10 letras o números, sin espacios.'; renderLobby(); return; } app.mp.createRoom(app.playerSpec.name, app.playerSpec, () => renderLobby(), custom || null); renderLobby(); };
-  $('btn-mp-join').onclick = () => { app.audio.init(); const code = readCode('mp-code'); if (!CODE_RE.test(code)) { app.mp.status = 'Escribí el código de la sala (de 3 a 10 letras o números).'; renderLobby(); return; } app.mp.joinRoom(code, app.playerSpec.name, app.playerSpec, () => renderLobby()); renderLobby(); };
+  $('btn-mp-create').onclick = () => { app.audio.init(); const custom = readCode('mp-newcode'); if (custom && !CODE_RE.test(custom)) { app.mp.status = t('El código: de 3 a 10 letras o números, sin espacios.'); renderLobby(); return; } app.mp.createRoom(app.playerSpec.name, app.playerSpec, () => renderLobby(), custom || null); renderLobby(); };
+  $('btn-mp-join').onclick = () => { app.audio.init(); const code = readCode('mp-code'); if (!CODE_RE.test(code)) { app.mp.status = t('Escribí el código de la sala (de 3 a 10 letras o números).'); renderLobby(); return; } app.mp.joinRoom(code, app.playerSpec.name, app.playerSpec, () => renderLobby()); renderLobby(); };
   $('mp-round').onchange = (e) => app.mp.setRound(parseInt(e.target.value));
-  $('btn-mp-copy').onclick = async () => { const v = $('mp-link').value; try { await navigator.clipboard.writeText(v); ui.toast('Link copiado', 'good', 2000); } catch (e) { $('mp-link').select(); document.execCommand && document.execCommand('copy'); ui.toast('Link seleccionado: copialo con Ctrl+C', 'good', 3000); } };
+  $('btn-mp-copy').onclick = async () => { const v = $('mp-link').value; try { await navigator.clipboard.writeText(v); ui.toast(t('Link copiado'), 'good', 2000); } catch (e) { $('mp-link').select(); document.execCommand && document.execCommand('copy'); ui.toast(t('Link seleccionado: copialo con Ctrl+C'), 'good', 3000); } };
   $('btn-mp-share').onclick = async () => { try { await navigator.share({ title: 'Formula 600', text: 'Entrá a mi sala de Formula 600', url: $('mp-link').value }); } catch (e) { /* canceló */ } };
   $('btn-mp-start').onclick = () => { if (app.mp.players.length < 1) return; app.mp.hostStart(); };
   $('btn-quick').onclick = () => startRace(true);
@@ -420,7 +431,7 @@ function bindInput() {
     if (e.code === 'Enter' && app.state === 'photo') savePhoto();
     if (KEYS.camera.includes(e.code) && app.state === 'race') app.chase.cycle();
     if (KEYS.reset.includes(e.code) && app.state === 'race') app.race.resetPlayer();
-    if (KEYS.mute.includes(e.code)) { const m = app.audio.toggleMute(); app.ui.toast(m ? 'Silencio' : 'Sonido', '', 1200); }
+    if (KEYS.mute.includes(e.code)) { const m = app.audio.toggleMute(); app.ui.toast(t(m ? 'Silencio' : 'Sonido'), '', 1200); }
     if (KEYS.horn.includes(e.code) && app.state === 'race') app.audio.horn(0, false);
     if (e.code === 'Enter' && app.state === 'race' && app.race.playerFinishT != null) app.race.skipRequested = true;
     if (['ArrowUp', 'ArrowDown', 'Space'].includes(e.code)) e.preventDefault();
@@ -498,5 +509,5 @@ function tick(now) {
 }
 const _dir = new THREE.Vector3();
 
-init().catch(e => { console.error(e); const p = document.querySelector('#loading p'); if (p) p.textContent = 'Error al cargar: ' + e.message; });
+init().catch(e => { console.error(e); const p = document.querySelector('#loading p'); if (p) p.textContent = t('Error al cargar: ') + e.message; });
 window.app = app;
