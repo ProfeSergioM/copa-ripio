@@ -23,7 +23,7 @@ export const CIRCUITS = {
   },
   ovalo: {
     // aiBoost: el óvalo es corto y fácil, así que los rivales corren con mejor auto (calibrado con herramientas/fuera.mjs)
-    id: 'ovalo', name: 'Óvalo de Tierra del Club Social', closed: true, start: [0, -55], heightScale: 1.35, aiBoost: 1.16,
+    id: 'ovalo', name: 'Óvalo de Tierra del Club Social', closed: true, start: [0, -55], heightScale: 1.35, aiBoost: 1.40,
     paisaje: 'bosque', cerros: 1.55, aire: { color: '#8fa88c', k: 0.62 },
     points: [
       [-110, -52, 0], [-40, -56, 0.2], [40, -56, 0.2], [110, -52, 0.4], [148, -22, 1.2], [152, 18, 1.4], [120, 50, 0.8],

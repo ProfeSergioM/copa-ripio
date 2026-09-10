@@ -34,7 +34,11 @@ export class AIDriver {
     const tune = profile.tune || { grip: 1, brake: 1 };
     this.speedFactor = (0.91 + 0.09 * this.skill) * (1 + Math.max(0, this.difficulty - 1) * (profile.sfk != null ? profile.sfk : 0.35)) * (profile.pace || 1);
     this.decel = 4.3 * (0.85 + 0.3 * this.skill) * (tune.brake || 1);
-    const MUK = profile.muk || 0.76; // calibrado con herramientas/solo2.mjs y fuera.mjs
+    // Cuánto agarre lateral cree tener el piloto. Medido con herramientas/agarre.mjs, el auto sostiene
+    // ~0,55 g en curva sostenida, bastante menos que el µ nominal de las gomas: el modelo de deriva nunca
+    // llega al tope. Con la estimación vieja entraba pasado a todas las curvas, iba con el volante al tope
+    // derrapando y salía más lento que si hubiera pasado limpio.
+    const MUK = profile.muk || 0.46;
     this.hs = profile.hs != null ? profile.hs : 0.015; // pérdida de agarre estimado en curvas rápidas (por m/s sobre 12)
     this.muKnown = SURFACES.gravel.grip * MUK * (0.9 + 0.12 * this.skill) * (tune.grip || 1);
     this.throttleSmooth = 0; this.honk = 0;
@@ -167,7 +171,11 @@ export class AIDriver {
     const curvAhead = s[t.wrap(c.trackIdx + Math.round(clamp(Math.abs(speed) * 0.35, 3, 10)))].curvS;
     const ff = Math.atan(CAR.wheelbase * curvAhead) * 1.15;
     const err = wrapAngle(targetHeading - refHead);
-    const mu = (SURFACES[c.surface] || SURFACES.gravel).grip;
+    // El mismo agarre que usa la física: si no se cuenta la preparación del auto (tune.grip), el tope de
+    // volante que calcula la IA queda por debajo del real y termina girando más de lo que pide, cruzándose
+    // en la entrada de las curvas rápidas. Cuanto más preparado el auto, peor era el efecto.
+    const mu = (SURFACES[c.surface] || SURFACES.gravel).grip * (c.tune ? c.tune.grip : 1) * (t.gripScale || 1)
+      * (1 - 0.12 * Math.max(c.damage.left, c.damage.right));
     const lim = steerLimit(Math.abs(speed), mu);
     // pure pursuit geométrico: curvatura necesaria para pasar por el punto objetivo → ángulo de ruedas
     let steer = (ff + err * (1.3 + 0.5 * this.skill) - c.yawRate * 0.01) / lim;
@@ -202,7 +210,15 @@ export class AIDriver {
     }
     if (barBrake > 0) allowed = Math.min(allowed, 8 - barBrake * 5);
     if (this.mistake > 0 && this.mistakeSteer > 0.3) allowed += 6; // se pasa de rosca
-    let acc = (allowed - speed - 0.6) * 1.4; // margen: frena un poco antes
+    // Coasting: cuando sobra poca velocidad se levanta el pie y listo, no se toca el freno. El aire y la
+    // rodadura ya bajan solos ~1 m/s², y el freno saca más de lo necesario, obliga a volver a acelerar y
+    // encima se come el agarre. Es lo que hace una persona y por eso llega más rápido a la curva.
+    const aLevante = 0.16 + 0.00086 * speed * speed; // m/s² que pierde el auto sin tocar nada
+    const sobra = speed - allowed;
+    let acc;
+    if (sobra < 0) acc = -sobra * 1.4;
+    else if (sobra < aLevante * 1.1) acc = 0; // de levantada
+    else acc = -clamp((sobra - aLevante * 1.1) / 2.2, 0, 1);
     if (brakeFor > 0) acc = Math.min(acc, -brakeFor * 1.5);
     // el acelerador se suaviza; el freno responde al instante
     this.throttleSmooth = lerp(this.throttleSmooth, clamp(acc, 0, 1), clamp(dt * 6, 0, 1));
@@ -210,9 +226,12 @@ export class AIDriver {
     if (sinceGreen < 2) inp.throttle *= 0.8 + 0.2 * clamp(sinceGreen / 2, 0, 1); // largada progresiva, breve
     inp.brake = acc < 0 ? clamp(-acc, 0, 1) : 0;
     if (acc <= 0) this.throttleSmooth = 0;
-    // no frenar a fondo en plena curva: el freno se come el agarre lateral
+    // Frenar y doblar a la vez se paga caro: el freno va 58 % adelante, que es el mismo tren al que se le
+    // pide el giro, así que el auto se va largo y al soltar se cruza. Se frena derecho y se dobla de
+    // levantada; sólo si viene muy pasado se frena igual, aunque cueste.
     const latDemand = Math.abs(sm.curvS) * speed * speed / (mu * g);
-    inp.brake *= clamp(1.15 - latDemand, 0.3, 1);
+    const emergencia = clamp((sobra - 3) / 6, 0, 1);
+    inp.brake *= Math.max(emergencia, clamp(1.05 - latDemand * 1.9, 0, 1));
     // si la cola se va, levanta (y no frena, que empeora)
     const sl = Math.abs(c.slipR);
     if (sl > 0.12) { inp.throttle *= clamp(1 - (sl - 0.12) * 3, 0.15, 1); if (sl > 0.3) inp.brake = 0; }

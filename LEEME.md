@@ -35,7 +35,8 @@ Siete fechas con premios en plata y puntos 25-20-17… para los 20:
 1. **Polvaredas, mañana** — 3 vueltas.
 2. **Óvalo de Tierra del Club Social** — pista corta, 5 vueltas, todos pegados. Corre dentro
    de un pinar cerrado, con cerros oscuros de fondo y aire verdoso; los rivales van con un
-   plus de motor, agarre y freno (`aiBoost` del circuito) porque el óvalo quedaba muy fácil.
+   plus de motor, agarre y freno (`aiBoost` 1,40) porque el óvalo quedaba muy fácil. Con eso
+   giran 37,4 s de mejor vuelta y 38,1 s de media de mejores, casi sin salirse.
 3. **Tormenta de verano** en Polvaredas — lluvia, barro (agarre 74 %), viento cruzado que
    lleva el polvo y la lluvia, público con paraguas, reflectores prendidos.
 4. **Especial Camino del Cerro** — tramo de rally punto a punto contra el reloj. Los 19
@@ -83,8 +84,14 @@ Siete fechas con premios en plata y puntos 25-20-17… para los 20:
   alambrado, y niebla propia para que no se parezca a Polvaredas.
 - **Celular**: controles táctiles (volante, acelerador, freno, freno de mano), HUD compacto
   y menos píxeles para mantener los cuadros.
-- **IA calibrada por ensayo y error** (`herramientas/zigzag.mjs`, `traza.mjs`, `atascos.mjs`):
-  con menos "sabiduría" de agarre (0,72) es igual de rápida y deja de irse afuera; postes
+- **La IA maneja como una persona** (`herramientas/agarre.mjs`, `vuelta.mjs`, `traza2.mjs`): el auto
+  sostiene 0,55 g en curva sostenida, bastante menos que el µ de las gomas, y frenando en plena curva
+  baja a 0,03. Así que el piloto estima el agarre en ese valor real (0,46 de "sabiduría"), frena derecho
+  y dobla de levantada en vez de arrastrar el freno. Antes entraba pasado a todas las curvas, iba con el
+  volante al tope derrapando y salía más lento; en el óvalo pasó de 41,8 s a 40,1 s de vuelta limpia y
+  dejó de irse afuera. También se corrigió que el tope de volante ignoraba la preparación del auto, por
+  lo que los rivales más preparados se cruzaban solos entrando a las curvas rápidas.
+- **IA calibrada por ensayo y error** (`herramientas/zigzag.mjs`, `traza.mjs`, `atascos.mjs`): postes
   finos sin colisión; con dificultad alta los rivales reciben algo más de par y agarre. Los
   rivales también se abollan y pierden piezas.
 - **Repetición**: desde los resultados, "Ver repetición" muestra el golpe más grande de la

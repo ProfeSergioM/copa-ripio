@@ -16,4 +16,4 @@ for (const name of (process.env.CIRCUITO || 'polvaredas,ovalo').split(',')) {
   }
   out.push(`${name}: vueltas ${laps.map(x => x.toFixed(1)).join(' ')} · fuera ${(off / Math.max(1, laps.length)).toFixed(1)} s/vuelta`);
 }
-console.log(`MUK ${process.env.MUK || '0.72'} HS ${process.env.HS || '0'} → ${out.join(' | ')}`);
+console.log(`MUK ${process.env.MUK || '0.46'} HS ${process.env.HS || '0'} → ${out.join(' | ')}`);
