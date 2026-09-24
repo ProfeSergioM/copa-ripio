@@ -42,6 +42,7 @@ export class World {
     });
     if (this.track && this.track.marks) { this.track.marks.texture.dispose(); this.track.marks = null; }
     if (this.rain) { this.rain.dispose(); this.rain = null; }
+    if (this.semaforo) { for (const m of Object.values(this.semaforo)) m.dispose(); this.semaforo = null; } // los que no estaban puestos
     this.animated.length = 0; this.flags.length = 0; this.lamps.length = 0; this.tvSpots.length = 0;
   }
 
@@ -86,7 +87,7 @@ export class World {
         void main(){ vec3 d = normalize(vW - cameraPosition); float h = clamp(d.y, -0.1, 1.0);
           vec3 c = mix(horizon, top, pow(h, 0.55));
           float sd = max(dot(d, normalize(sunDir)), 0.0);
-          c += sunCol * (pow(sd, 260.0) * 1.2 + pow(sd, 6.0) * 0.18);
+          c += sunCol * (pow(sd, 260.0) * 5.0 + pow(sd, 6.0) * 0.18);
           if (night > 0.0) { vec2 g = floor(d.xz / max(d.y,0.05) * 60.0); float st = step(0.985, hash(g)) * smoothstep(0.1, 0.4, d.y); c += vec3(st) * night * 0.9; }
           gl_FragColor = vec4(c, 1.0); }`,
     });
@@ -536,7 +537,7 @@ export class World {
   // ---------- Reflectores ----------
   buildLamps() {
     const t = this.track;
-    this.lampOnMat = toonMat('#fff2b0', { emissive: '#ffe9a0', emissiveIntensity: 1.6 });
+    this.lampOnMat = toonMat('#fff2b0', { emissive: '#ffe9a0', emissiveIntensity: 3.2 });
     this.lampOffMat = toonMat('#8a8f96');
     const coneMat = new THREE.MeshBasicMaterial({ color: '#ffe9a0', transparent: true, opacity: 0.08, depthWrite: false, side: THREE.DoubleSide });
     const count = Math.round(t.length / 70);
@@ -589,8 +590,16 @@ export class World {
     for (let i = 0; i < 3; i++) { const l = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), toonMat('#5a1008')); l.position.set(-1.2 + i * 1.2, 4.9, 0.4); g.add(l); this.startLights.push(l); }
     if (!t.closed) make(t.samples[t.n - 4], 'LLEGADA');
   }
+  // Tres materiales fijos: antes se creaba uno nuevo por luz en cada paso de la cuenta regresiva y ninguno
+  // se liberaba. Emiten fuerte para que el semáforo brille incluso a pleno sol.
   setStartLights(n, green) {
-    this.startLights.forEach((l, i) => { l.material = green ? toonMat('#4ee04e', { emissive: '#2a8a2a', emissiveIntensity: 1 }) : (i < n ? toonMat('#ff3a2a', { emissive: '#8a1008', emissiveIntensity: 1 }) : toonMat('#5a1008')); });
+    if (!this.semaforo) this.semaforo = {
+      verde: toonMat('#4ee04e', { emissive: '#4ee04e', emissiveIntensity: 7 }),
+      rojo: toonMat('#ff3a2a', { emissive: '#ff3a2a', emissiveIntensity: 11 }),
+      apagado: toonMat('#5a1008'),
+    };
+    const m = this.semaforo;
+    this.startLights.forEach((l, i) => { l.material = green ? m.verde : (i < n ? m.rojo : m.apagado); });
   }
 
   // Cámaras fijas de TV: a los costados, cada ~110 m, alternando lados

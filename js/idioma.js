@@ -66,6 +66,7 @@ const EN = {
   'Volumen general': 'Master volume',
   'Música del menú': 'Menu music',
   'Sombras': 'Shadows',
+  'Brillo de las luces': 'Light glow',
   'Vueltas por carrera': 'Laps per race',
   'Sonido del motor': 'Engine sound',
   'Idioma': 'Language',

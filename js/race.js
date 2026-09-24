@@ -9,6 +9,9 @@ import { CAR, SURFACES, RACE } from './config.js';
 import { clamp, formatTime, dampTo } from './util.js';
 import { Replay, STRIDE } from './replay.js';
 
+// ?auto en la dirección: el auto del jugador maneja solo (para mirar y medir el juego sin tocar nada)
+const AUTO = typeof location !== 'undefined' && new URLSearchParams(location.search).has('auto');
+
 const FIXED = 1 / 120;
 const _v = new THREE.Vector3();
 const _near = [];
@@ -129,7 +132,7 @@ export class Race {
     const pIn = this.player.state.finished || this.phase === 'idle' ? null : input;
     for (const c of this.cars) {
       if (c.remote) continue;
-      if (c.isPlayer && pIn) c.input = pIn;
+      if (c.isPlayer && pIn && !AUTO) c.input = pIn;
       else if (c.isPlayer && this.mode === 'timetrial' && c.state.finished) c.input = { steer: 0, throttle: 0, brake: 1, handbrake: false };
       else {
         if (!c.ai) c.ai = new AIDriver(c.state, this.track, this.line, { skill: 0.85, aggression: 0.3, seed: 7, difficulty: 1 });
@@ -191,7 +194,7 @@ export class Race {
       }
       if (e.strength > 6) { this.world.raiseFlag(e.px, e.pz, 4); if (d < 90) { this.audio.cheerNow(0.5); this.world.cheerLevel = 1; } }
       const s = clamp(e.strength / 8, 0.2, 1.5), y = (A ? A.state.y : 0);
-      for (let k = 0; k < 6 * s; k++) this.particles.emit(e.px, y + 0.5, e.pz, (Math.random() - 0.5) * 6, Math.random() * 4, (Math.random() - 0.5) * 6, 0.12, 0.25 + Math.random() * 0.2, 1, 0.85, 0.3, 0.9, 0);
+      for (let k = 0; k < 6 * s; k++) this.particles.emit(e.px, y + 0.5, e.pz, (Math.random() - 0.5) * 6, Math.random() * 4, (Math.random() - 0.5) * 6, 0.12, 0.25 + Math.random() * 0.2, 2.8, 2.2, 0.8, 0.9, 0);
       for (let k = 0; k < 4 * s; k++) this.particles.emit(e.px, y + 0.4, e.pz, (Math.random() - 0.5) * 3, Math.random() * 2, (Math.random() - 0.5) * 3, 0.9, 0.8 + Math.random(), 0.8, 0.7, 0.5, 0.45, 2);
     }
     ev.length = 0;
@@ -430,7 +433,7 @@ export class Race {
         if (s.landedImpact > 4) for (let k = 0; k < 10; k++) this.particles.emit(s.x, s.y + 0.2, s.z, (Math.random() - 0.5) * 5, Math.random() * 2, (Math.random() - 0.5) * 5, 1, 1.5, 0.82, 0.7, 0.5, 0.4, 2.5);
         if (!s.airborne && s.surface === 'gravel' && sp > 8 && Math.random() < dt * (6 + sp * 0.4 + s.wheelspin * 20)) { const fx = Math.sin(s.heading), fz = Math.cos(s.heading), lx = Math.cos(s.heading), lz = -Math.sin(s.heading); const side = Math.random() < 0.5 ? 1 : -1; this.particles.emit(s.x - fx * 1.0 + lx * side * 0.7, s.y + 0.2, s.z - fz * 1.0 + lz * side * 0.7, -s.vx * 0.35 + (Math.random() - 0.5) * 4, 2.5 + Math.random() * 3, -s.vz * 0.35 + (Math.random() - 0.5) * 4, 0.08, 0.9, 0.3, 0.22, 0.13, 1, 0, -9.8); }
         if (s.throttle > 0.6 && Math.random() < dt * 8) { _v.copy(v.exhaustAnchor).applyMatrix4(v.root.matrixWorld); this.particles.emit(_v.x, _v.y, _v.z, -s.vx * 0.3, 0.6, -s.vz * 0.3, 0.3, 0.5, 0.5, 0.5, 0.5, 0.3, 1.5); }
-        if (s.throttle < 0.1 && s.rpm > 4200 && Math.random() < dt * 3) { _v.copy(v.exhaustAnchor).applyMatrix4(v.root.matrixWorld); for (let k = 0; k < 3; k++) this.particles.emit(_v.x, _v.y, _v.z, -s.vx * 0.5 + (Math.random() - 0.5), 0.3, -s.vz * 0.5 + (Math.random() - 0.5), 0.22, 0.12, 1, 0.6, 0.15, 0.95, 0); }
+        if (s.throttle < 0.1 && s.rpm > 4200 && Math.random() < dt * 3) { _v.copy(v.exhaustAnchor).applyMatrix4(v.root.matrixWorld); for (let k = 0; k < 3; k++) this.particles.emit(_v.x, _v.y, _v.z, -s.vx * 0.5 + (Math.random() - 0.5), 0.3, -s.vz * 0.5 + (Math.random() - 0.5), 0.22, 0.12, 2.6, 1.4, 0.35, 0.95, 0); }
         if (c.remote && s.netDamage > 0.5 && Math.random() < dt * 4) { _v.copy(v.smokeAnchor).applyMatrix4(v.root.matrixWorld); this.particles.emit(_v.x, _v.y, _v.z, 0, 1, 0, 0.6, 1.5, 0.4, 0.4, 0.42, 0.5, 2); }
         if (s.damage.rear > 0.45) {
           c.smokeAcc += (s.damage.rear - 0.3) * 18 * dt;

@@ -32,7 +32,10 @@ const lightOn = toonMat('#fff6c8', { emissive: '#ffe9a0', emissiveIntensity: 0.6
 const lensMat = toonMat('#dbeefb', { transparent: true, opacity: 0.55, emissive: '#ffe9a0', emissiveIntensity: 0.15 });
 const lightBroken = toonMat('#4a4a4a');
 const tailOff = toonMat('#c8342a', { emissive: '#4a0c08', emissiveIntensity: 0.35 });
-const tailOn = toonMat('#ff4a3a', { emissive: '#ff2a1a', emissiveIntensity: 1.6 });
+// El brillo se dispara por luminancia, y en el rojo puro pesa poco (0,3 por unidad): por eso las traseras
+// emiten bastante más fuerte que los faros blancos para llegar a brillar de noche.
+const tailOn = toonMat('#ff4a3a', { emissive: '#ff2a1a', emissiveIntensity: 7 });
+const tailNight = toonMat('#ff3a2a', { emissive: '#ff2a1a', emissiveIntensity: 4.2 }); // de posición, de noche
 const outline = outlineMat();
 const woodMat = toonMat('#a8743c');
 const suitcaseMats = ['#b5533c', '#3f6fb5', '#c9a26b', '#6f8f4b'].map(c => toonMat(c));
@@ -43,7 +46,7 @@ const reflMat = toonMat('#b02020');
 const badgeMat = toonMat('#c8342a');
 const seamMat = toonMat('#1d130c');
 // Materiales de modulo: los comparten todos los autos y todas las carreras, no hay que liberarlos
-for (const m of [chromeMat, tireMat, hubMat, glassMat, darkMat, lightOn, lensMat, lightBroken, tailOff, tailOn,
+for (const m of [chromeMat, tireMat, hubMat, glassMat, darkMat, lightOn, lensMat, lightBroken, tailOff, tailOn, tailNight,
                  outline, woodMat, whitewallMat, blinkMat, parkMat, reflMat, badgeMat, seamMat, ...suitcaseMats]) m.userData.compartido = true;
 
 function roundedRect(w, h, r) {
@@ -530,7 +533,9 @@ export function breakHeadlight(cv, side) {
 }
 
 export function setHeadlights(cv, on) {
-  for (const hl of cv.headlights) if (hl.material !== lightBroken) hl.material.emissiveIntensity = on ? 1.3 : 0.15;
+  cv.lucesNoche = on;
+  for (const hl of cv.headlights) if (hl.material !== lightBroken) hl.material.emissiveIntensity = on ? 3 : 0.15;
+  if (!cv.braking) for (const t of cv.taillights) t.material = on ? tailNight : tailOff;
 }
 
 // Devuelve piezas que se desprenden según daño por zona {front,rear,left,right}
@@ -563,5 +568,5 @@ export function restoreCar(cv) {
 
 export function setBrakeLights(cv, on) {
   if (cv.braking === on) return; cv.braking = on;
-  for (const t of cv.taillights) t.material = on ? tailOn : tailOff;
+  for (const t of cv.taillights) t.material = on ? tailOn : (cv.lucesNoche ? tailNight : tailOff);
 }

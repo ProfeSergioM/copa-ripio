@@ -27,6 +27,17 @@ export class GameAudio {
     this.limiter = ctx.createDynamicsCompressor(); this.limiter.threshold.value = -6; this.limiter.knee.value = 0; this.limiter.ratio.value = 20; this.limiter.attack.value = 0.002; this.limiter.release.value = 0.12;
     const trim = ctx.createGain(); trim.gain.value = 0.85;
     this.master.connect(this.comp); this.comp.connect(this.limiter); this.limiter.connect(trim); trim.connect(ctx.destination);
+    // Reverberación: antes todo sonaba seco, como en una cabina. Los sonidos del lugar (público, bocinas,
+    // golpes, petardeo, pájaros, música) pasan por un bus de ambiente que manda una parte a una sala
+    // generada; el motor propio no, para que siga seco y al frente. Cerca de la tribuna la sala crece.
+    this.reverb = ctx.createConvolver(); this.reverb.buffer = this.impulso(1.9, 2.4);
+    const predelay = ctx.createDelay(0.1); predelay.delayTime.value = 0.022;
+    this.revSend = ctx.createGain(); this.revSend.gain.value = 0.26;
+    const revRet = ctx.createGain(); revRet.gain.value = 0.85;
+    this.revSend.connect(predelay); predelay.connect(this.reverb); this.reverb.connect(revRet); revRet.connect(this.master);
+    this.amb = ctx.createGain(); this.amb.connect(this.master); this.amb.connect(this.revSend);
+    // los motores rivales van un poco a la sala: los ubica en el espacio sin embarrar
+    this.revRivales = ctx.createGain(); this.revRivales.gain.value = 0.35; this.revRivales.connect(this.revSend);
     // ruido blanco compartido
     const len = ctx.sampleRate * 2, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
     let b0 = 0; for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; b0 = 0.98 * b0 + 0.02 * w; d[i] = (w * 0.6 + b0 * 3) * 0.5; }
@@ -35,7 +46,7 @@ export class GameAudio {
     this.engine = this.makeEngineVoice(true);
     this.engine.out.connect(this.master);
     // rivales: 5 voces simples (2 osciladores + escape), suficiente de lejos y mucho más barato que la voz rica
-    for (let i = 0; i < 5; i++) { const v = this.makeEngineVoice(false); v.pan = ctx.createStereoPanner(); v.out.connect(v.pan); v.pan.connect(this.master); v.car = null; this.aiVoices.push(v); }
+    for (let i = 0; i < 5; i++) { const v = this.makeEngineVoice(false); v.pan = ctx.createStereoPanner(); v.out.connect(v.pan); v.pan.connect(this.master); v.pan.connect(this.revRivales); v.car = null; this.aiVoices.push(v); }
     this.gravel = this.noiseVoice(320, 0.8); this.gravel.out.connect(this.master);
     this.grass = this.noiseVoice(140, 0.6); this.grass.out.connect(this.master);
     this.skid = this.noiseVoice(1500, 3); this.skid.out.connect(this.master);
@@ -44,9 +55,9 @@ export class GameAudio {
     this.swish = this.noiseVoice(650, 1.2); this.swish.out.connect(this.master); this.pebbleT = 0;
     this.othersGravel = this.noiseVoice(260, 0.8); this.othersPan = ctx.createStereoPanner(); this.othersGravel.out.disconnect(); this.othersGravel.out.connect(this.othersPan); this.othersPan.connect(this.master);
     this.rain = this.noiseVoice(1400, 0.4); this.rain.filter.type = 'lowpass'; this.rain.out.connect(this.master); this.dripT = 0; this.hornT = 3;
-    this.crowd = this.noiseVoice(900, 0.4); this.crowd.filter.type = 'bandpass'; this.crowd.out.connect(this.master);
+    this.crowd = this.noiseVoice(900, 0.4); this.crowd.filter.type = 'bandpass'; this.crowd.out.connect(this.amb);
     this.crowdLevel = 0; this.cheer = 0;
-    this.musicGain = ctx.createGain(); this.musicGain.gain.value = 0; this.musicGain.connect(this.master);
+    this.musicGain = ctx.createGain(); this.musicGain.gain.value = 0; this.musicGain.connect(this.amb);
     this.musicNext = 0; this.musicStep = 0; this.musicTimer = null;
     this.startMusicScheduler();
     this.loadSamples();
@@ -65,6 +76,26 @@ export class GameAudio {
     this.crashBuf = crash; this.startBuf = start;
     if (skid) { const src = ctx.createBufferSource(); src.buffer = skid; src.loop = true; const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1400; const g = ctx.createGain(); g.gain.value = 0; src.connect(f); f.connect(g); g.connect(this.master); src.start(); this.skidSample = { src, g }; }
     if (wind) { const src = ctx.createBufferSource(); src.buffer = wind; src.loop = true; const g = ctx.createGain(); g.gain.value = 0; src.connect(g); g.connect(this.master); src.start(); this.windSample = { src, g }; }
+  }
+  // Sala al aire libre: cola de ruido que decae y se oscurece con el tiempo (el aire se come los agudos),
+  // distinta en cada canal para que abra el estéreo, más unas primeras reflexiones de tribuna y tablones.
+  impulso(segundos, caida) {
+    const ctx = this.ctx, tasa = ctx.sampleRate, largo = Math.floor(tasa * segundos);
+    const buf = ctx.createBuffer(2, largo, tasa);
+    for (let canal = 0; canal < 2; canal++) {
+      const d = buf.getChannelData(canal);
+      let filtrado = 0;
+      for (let i = 0; i < largo; i++) {
+        const t = i / largo;
+        filtrado += ((Math.random() * 2 - 1) - filtrado) * (0.85 - 0.7 * t);
+        d[i] = filtrado * Math.pow(1 - t, caida);
+      }
+      for (const [ms, g] of [[9, 0.55], [17, 0.4], [29, 0.3], [43, 0.22], [61, 0.15]]) {
+        const k = Math.floor((ms + canal * 3.1) / 1000 * tasa);
+        if (k < largo) d[k] += g * (canal ? -1 : 1);
+      }
+    }
+    return buf;
   }
   // seis lazos en paralelo por voz; se mezclan los dos vecinos al régimen actual y se corrige la velocidad
   makeSampleLayers(voice) {
@@ -95,7 +126,7 @@ export class GameAudio {
     sm.out.gain.setTargetAtTime(gain * (0.45 + 0.55 * load) * (misfire ? 0.2 : 1), t, misfire ? 0.01 : 0.05);
   }
   engineStart() { if (!this.ctx || !this.startBuf) return; const src = this.ctx.createBufferSource(); src.buffer = this.startBuf; const g = this.ctx.createGain(); g.gain.value = 0.5; src.connect(g); g.connect(this.master); src.start(); this.soltar(src, g); }
-  crashSample(strength, pan) { if (!this.crashBuf) return; const ctx = this.ctx; const src = ctx.createBufferSource(); src.buffer = this.crashBuf; src.playbackRate.value = 0.8 + Math.random() * 0.5; const g = ctx.createGain(); g.gain.value = clamp(strength / 10, 0.15, 1); const p = ctx.createStereoPanner(); p.pan.value = clamp(pan, -1, 1); src.connect(g); g.connect(p); p.connect(this.master); src.start(); this.soltar(src, g, p); }
+  crashSample(strength, pan) { if (!this.crashBuf) return; const ctx = this.ctx; const src = ctx.createBufferSource(); src.buffer = this.crashBuf; src.playbackRate.value = 0.8 + Math.random() * 0.5; const g = ctx.createGain(); g.gain.value = clamp(strength / 10, 0.15, 1); const p = ctx.createStereoPanner(); p.pan.value = clamp(pan, -1, 1); src.connect(g); g.connect(p); p.connect(this.amb); src.start(); this.soltar(src, g, p); }
 
   setVolume(v) { this.volume = v; if (this.master) this.master.gain.value = this.muted ? 0 : v * 1.2; }
   toggleMute() { this.muted = !this.muted; if (this.master) this.master.gain.value = this.muted ? 0 : this.volume * 1.2; return this.muted; }
@@ -181,7 +212,7 @@ export class GameAudio {
     const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q;
     const g = ctx.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
     const p = ctx.createStereoPanner(); p.pan.value = clamp(pan, -1, 1);
-    src.connect(f); f.connect(g); g.connect(p); p.connect(this.master); src.start(t); src.stop(t + dur + 0.05);
+    src.connect(f); f.connect(g); g.connect(p); p.connect(this.amb); src.start(t); src.stop(t + dur + 0.05);
     this.soltar(src, f, g, p);
   }
   tone(freq, type, gain, dur, pan = 0, slide = 1) {
@@ -189,7 +220,7 @@ export class GameAudio {
     const o = ctx.createOscillator(); o.type = type; o.frequency.setValueAtTime(freq, t); o.frequency.exponentialRampToValueAtTime(freq * slide, t + dur);
     const g = ctx.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
     const p = ctx.createStereoPanner(); p.pan.value = clamp(pan, -1, 1);
-    o.connect(g); g.connect(p); p.connect(this.master); o.start(t); o.stop(t + dur + 0.05);
+    o.connect(g); g.connect(p); p.connect(this.amb); o.start(t); o.stop(t + dur + 0.05);
     this.soltar(o, g, p);
   }
   impact(strength, pan = 0, soft = false) {
@@ -292,6 +323,7 @@ export class GameAudio {
     }
     // público
     const cd = opts.crowdDist ?? 200;
+    this.revSend.gain.setTargetAtTime(0.22 + 0.3 / (1 + (cd / 60) ** 2), t, 0.5);
     const base = racing ? 0.2 / (1 + (cd / 50) ** 2) + 0.02 : 0.05;
     this.crowdT -= dt;
     if (this.crowdT < 0) { this.crowdT = 0.25 + Math.random() * 0.4; this.crowdLevel = base * (0.7 + Math.random() * 0.6); }

@@ -16,17 +16,22 @@ export class Particles {
     geo.setDrawRange(0, 0);
     const mat = new THREE.ShaderMaterial({
       transparent: true, depthWrite: false,
-      uniforms: { uScale: { value: 400 } },
+      uniforms: { uScale: { value: 400 }, uLuz: { value: 1 } },
       vertexShader: `attribute float aSize; attribute float aAlpha; attribute vec3 aColor; varying float vA; varying vec3 vC; uniform float uScale;
         void main(){ vA = aAlpha; vC = aColor; vec4 mv = modelViewMatrix * vec4(position,1.0); gl_PointSize = aSize * uScale / -mv.z; gl_Position = projectionMatrix * mv; }`,
-      fragmentShader: `varying float vA; varying vec3 vC;
-        void main(){ vec2 d = gl_PointCoord - 0.5; float r = length(d); float a = smoothstep(0.5, 0.18, r) * vA; if (a < 0.01) discard; gl_FragColor = vec4(vC, a); }`,
+      // Las partículas no reciben luz de la escena: sin esto, de noche el polvo salía con el mismo color claro
+      // que a mediodía y se veían discos fantasma. uLuz sigue a la hora del día. Lo que se emite con color
+      // por encima de 1 (chispas de choque, llamitas del petardeo) tiene luz propia y no se oscurece.
+      fragmentShader: `varying float vA; varying vec3 vC; uniform float uLuz;
+        void main(){ vec2 d = gl_PointCoord - 0.5; float r = length(d); float a = smoothstep(0.5, 0.18, r) * vA; if (a < 0.01) discard;
+          float propia = step(1.01, max(vC.r, max(vC.g, vC.b))); gl_FragColor = vec4(mix(vC * uLuz, vC, propia), a); }`,
     });
     this.points = new THREE.Points(geo, mat); this.points.frustumCulled = false;
     this.wind = { x: 0, z: 0 };
     this.geo = geo;
     scene.add(this.points);
   }
+  setLuz(v) { this.points.material.uniforms.uLuz.value = v; }
   emit(x, y, z, vx, vy, vz, size, life, r, g, b, alpha = 0.5, grow = 1.5, gravity = 0.6) {
     let i;
     if (this.count < this.max) i = this.count++;
