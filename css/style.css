@@ -88,8 +88,14 @@ td.num, th.num { text-align: right; }
 .toast.good { background: var(--olive); }
 .toast.bad { background: var(--brick); }
 @keyframes pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-#countdown { position: absolute; left: 50%; top: 32%; transform: translate(-50%,-50%); font-family: 'Bangers', Impact, sans-serif; font-size: 170px; color: var(--ochre); text-shadow: 6px 6px 0 var(--ink); animation: pop .3s; }
-#countdown.go { color: #6fd36f; }
+/* semáforo de largada: reemplaza a los números gigantes de la cuenta regresiva */
+#semaforo { position: absolute; left: 50%; top: 96px; transform: translateX(-50%); display: flex; gap: 10px; padding: 9px 13px; background: #231a14; border: 4px solid var(--ink); border-radius: 18px; box-shadow: 0 5px 0 var(--ink), inset 0 2px 0 rgba(255,255,255,.08); transition: opacity .45s, transform .45s; }
+#semaforo::before, #semaforo::after { content: ''; position: absolute; top: 50%; width: 10px; height: 14px; margin-top: -7px; background: #231a14; border: 3px solid var(--ink); }
+#semaforo::before { left: -15px; border-right: 0; border-radius: 6px 0 0 6px; } #semaforo::after { right: -15px; border-left: 0; border-radius: 0 6px 6px 0; }
+#semaforo .foco { width: 30px; height: 30px; border-radius: 50%; background: radial-gradient(circle at 38% 34%, #5a2a24, #2e1512 70%); border: 3px solid #120c09; box-shadow: inset 0 3px 5px rgba(0,0,0,.6); transition: background .08s, box-shadow .08s; }
+#semaforo .foco.rojo { background: radial-gradient(circle at 38% 34%, #ffd0c4, #ff3a2a 45%, #a3140c 100%); box-shadow: 0 0 14px 3px rgba(255,58,42,.75), inset 0 -2px 4px rgba(0,0,0,.3); }
+#semaforo .foco.verde { background: radial-gradient(circle at 38% 34%, #e2ffd8, #4ee04e 45%, #16800f 100%); box-shadow: 0 0 16px 4px rgba(78,224,78,.8), inset 0 -2px 4px rgba(0,0,0,.3); }
+#semaforo.oculto { opacity: 0; transform: translateX(-50%) translateY(-12px); }
 #banner { position: absolute; left: 50%; top: 17%; transform: translateX(-50%) rotate(-3deg); font-family: 'Bangers', Impact, sans-serif; font-size: 34px; color: var(--cream); background: var(--brick); border: 4px solid var(--ink); padding: 6px 36px; border-radius: 16px; box-shadow: var(--shadow); letter-spacing: 3px; animation: pop .3s; }
 #slipstream { position: absolute; left: 50%; bottom: 200px; transform: translateX(-50%); font-family: 'Bangers', Impact, sans-serif; font-size: 26px; color: var(--sky); text-shadow: 3px 3px 0 var(--ink); letter-spacing: 3px; }
 #wrongway { position: absolute; left: 50%; top: 40%; transform: translateX(-50%); font-family: 'Bangers', Impact, sans-serif; font-size: 48px; color: var(--brick); text-shadow: 4px 4px 0 var(--ink); animation: blink .6s infinite alternate; }
@@ -181,7 +187,7 @@ td.num, th.num { text-align: right; }
   .hud-box.rival { display: none; }
   .taunt { top: 80px; font-size: 12px; padding: 5px 10px; max-width: 78vw; border-width: 2px; }
   #toasts { bottom: calc(120px + min(96px, 20vw)); gap: 4px; } .toast { font-size: 13px; padding: 4px 10px; border-width: 2px; }
-  #countdown { font-size: 90px; } #banner { font-size: 22px; padding: 4px 16px; top: 15%; }
+  #semaforo { top: 58px; gap: 7px; padding: 6px 9px; border-width: 3px; } #semaforo .foco { width: 21px; height: 21px; } #banner { font-size: 22px; padding: 4px 16px; top: 15%; }
   #slipstream { font-size: 16px; bottom: 170px; } #wrongway { font-size: 26px; }
   .arrow { font-size: 40px; top: 42%; } #arrow-l { left: 8px; } #arrow-r { right: 8px; }
   /* Controles táctiles grandes: el volante es lo que más cuesta apuntar, así que va primero.

@@ -73,7 +73,7 @@ export class Race {
       else if (this.champ) { state.tune = this.champ.tune(); this.applyCarriedDamage(car, this.champ.damage); }
       if (r.isPlayer && (this.world.night || this.wet || this.world.foggy)) {
         for (const sx of [-0.48, 0.48]) {
-          const sp = new THREE.SpotLight('#ffe9b0', 90, 45, 0.55, 0.5, 1.4); sp.position.set(sx, 0.9, 1.5);
+          const sp = new THREE.SpotLight('#ffe9b0', 45, 45, 0.55, 0.5, 1.4); // a 90 quemaba en blanco a los autos de adelante sp.position.set(sx, 0.9, 1.5);
           const tgt = new THREE.Object3D(); tgt.position.set(sx * 1.5, 0.2, 14); vis.vis.add(tgt); sp.target = tgt; vis.vis.add(sp);
         }
       }
@@ -120,10 +120,10 @@ export class Race {
     if (this.phase === 'countdown') {
       this.countT += dt;
       const n = Math.floor(this.countT);
-      if (n >= 0 && n < RACE.countdown && n !== this.countShown) { this.countShown = n; this.ui.countdown(RACE.countdown - n); this.audio.beep(false); this.world.setStartLights(n + 1, false); }
+      if (n >= 0 && n < RACE.countdown && n !== this.countShown) { this.countShown = n; this.ui.semaforo(n + 1); this.audio.beep(false); this.world.setStartLights(n + 1, false); }
       if (this.countT >= RACE.countdown) {
-        this.phase = 'racing'; this.raceTime = 0; this.greenTime = 0; this.ui.countdown(t('¡VAMOS!'), true); this.audio.beep(true); this.world.setStartLights(3, true);
-        setTimeout(() => this.ui.countdown(null), 900); for (const c of this.cars) c.state.frozen = false; this.audio.cheerNow(0.8);
+        this.phase = 'racing'; this.raceTime = 0; this.greenTime = 0; this.ui.semaforo(3, true); this.audio.beep(true); this.world.setStartLights(3, true);
+        setTimeout(() => this.ui.semaforo(null), 1100); for (const c of this.cars) c.state.frozen = false; this.audio.cheerNow(0.8);
         if (this.mode !== 'timetrial') setTimeout(() => this.taunt('start'), 2500);
       }
     }
@@ -387,13 +387,18 @@ export class Race {
       const dCam2 = (s.x - camX) ** 2 + (s.z - camZ) ** 2;
       // un rival pegado a la cámara se ve como un manchón que tapa la pantalla: no se dibuja
       v.root.visible = c.isPlayer || dCam2 > 2.4 * 2.4;
-      if (v.lod) { const cerca = c.isPlayer || dCam2 < 30 * 30; if (cerca !== v.lodCerca) { v.lodCerca = cerca; for (const m of v.lod) m.visible = cerca; } }
+      // el detalle chico se va recién a 70 m, donde ya mide menos de un píxel, y vuelve a 60: con ese margen
+      // no parpadea cuando un auto anda justo en el límite (antes se cortaba a 30 m y se veía el salto)
+      if (v.lod) { const lim = v.lodCerca ? 70 : 60; const cerca = c.isPlayer || dCam2 < lim * lim; if (cerca !== v.lodCerca) { v.lodCerca = cerca; for (const m of v.lod) m.visible = cerca; } }
       let pitch = clamp(Math.atan(s.gradF || 0) - s.accFwd * 0.012, -0.3, 0.3), roll = clamp(-Math.atan(s.gradL || 0) - s.accLat * 0.02, -0.3, 0.3);
       if (s.airborne) pitch = clamp(-s.vy * 0.05, -0.35, 0.35);
       const bump = (!s.airborne && Math.abs(s.speed) > 3) ? Math.sin(this.time * 37 + c.gridSlot) * 0.006 * SURFACES[s.surface].rolling * clamp(Math.abs(s.speed) / 15, 0, 1) : 0;
       v.vis.rotation.x = dampTo(v.vis.rotation.x, pitch, 8, dt || 0.016); v.vis.rotation.z = dampTo(v.vis.rotation.z, roll, 8, dt || 0.016);
       v.vis.position.y = bump;
-      setBrakeLights(v, s.brake > 0.2 || s.handbrake);
+      // la luz de freno queda prendida un mínimo de un cuarto de segundo: la IA levanta y frena a toques,
+      // y con el freno rondando el umbral la luz titilaba (con el brillo nocturno se notaba mucho)
+      if (s.brake > 0.2 || s.handbrake) c.frenoT = 0.25; else c.frenoT = (c.frenoT || 0) - dt;
+      setBrakeLights(v, c.frenoT > 0);
       // el barro se va pegando a la carrocería (más rápido con lluvia y fuera del ripio); la reparación lo limpia
       if (!s.airborne && Math.abs(s.speed) > 3) { c.dirt = Math.min(1, (c.dirt || 0) + dt * Math.abs(s.speed) / 25 * (s.surface === 'gravel' ? 0.045 : 0.09) * (mud ? 2.5 : 1)); setDirt(v, c.dirt); }
       for (const w of v.wheels) {

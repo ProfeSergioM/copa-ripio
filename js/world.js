@@ -404,14 +404,40 @@ export class World {
   fencePost(x, z) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.1, 0.12), toonMat('#8a6a4a')); m.position.set(x, this.track.heightAt(x, z) + 0.55, z); this.add(m);
   }
+  // Carteles de publicidad. Antes eran 512x128 para 8 m de ancho (64 píxeles por metro) y sin filtrado
+  // anisotrópico, así que de costado se lavaban; ahora 2048x512, con mipmaps y filtrado a lo que dé la placa.
+  // La letra Bangers viene de Google Fonts y puede no haber llegado cuando se arma la pista: se dibuja igual
+  // con Impact y se vuelve a dibujar cuando la fuente termina de cargar.
   bannerTexture(text, bg, fg) {
-    const c = document.createElement('canvas'); c.width = 512; c.height = 128;
+    const W = 2048, H = 512;
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
     const g = c.getContext('2d');
-    g.fillStyle = bg; g.fillRect(0, 0, 512, 128);
-    g.strokeStyle = '#2b1d14'; g.lineWidth = 10; g.strokeRect(5, 5, 502, 118);
-    g.fillStyle = fg; g.font = 'bold 54px Bangers, Impact, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText(text, 256, 68);
-    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+    const dibujar = () => {
+      g.clearRect(0, 0, W, H);
+      // fondo con un leve degradé y una franja de brillo arriba, como chapa pintada
+      const fondo = g.createLinearGradient(0, 0, 0, H);
+      fondo.addColorStop(0, bg); fondo.addColorStop(1, sombrear(bg, -0.18));
+      g.fillStyle = fondo; g.fillRect(0, 0, W, H);
+      g.fillStyle = 'rgba(255,255,255,0.13)'; g.fillRect(0, 28, W, 46);
+      // marco doble: borde oscuro y filete claro por dentro
+      g.strokeStyle = '#2b1d14'; g.lineWidth = 40; g.strokeRect(20, 20, W - 40, H - 40);
+      g.strokeStyle = sombrear(fg, 0.1); g.globalAlpha = 0.55; g.lineWidth = 8; g.strokeRect(62, 62, W - 124, H - 124); g.globalAlpha = 1;
+      // texto ajustado al ancho, con contorno oscuro y sombra corrida para que se lea de lejos
+      let tam = 260;
+      g.font = `${tam}px Bangers, Impact, sans-serif`;
+      const ancho = g.measureText(text).width, util = W - 220;
+      if (ancho > util) { tam = Math.floor(tam * util / ancho); g.font = `${tam}px Bangers, Impact, sans-serif`; }
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.lineJoin = 'round';
+      g.fillStyle = 'rgba(43,29,20,0.55)'; g.fillText(text, W / 2 + 14, H / 2 + 26);
+      g.strokeStyle = '#2b1d14'; g.lineWidth = Math.max(10, tam * 0.09); g.strokeText(text, W / 2, H / 2 + 12);
+      g.fillStyle = fg; g.fillText(text, W / 2, H / 2 + 12);
+    };
+    dibujar();
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = this.renderer ? this.renderer.capabilities.getMaxAnisotropy() : 8;
+    if (document.fonts && document.fonts.load) document.fonts.load('260px Bangers').then(() => { dibujar(); t.needsUpdate = true; }).catch(() => { /* queda con Impact */ });
+    return t;
   }
   buildBanners() {
     const t = this.track, rnd = mulberry32(55);
@@ -539,7 +565,12 @@ export class World {
     const t = this.track;
     this.lampOnMat = toonMat('#fff2b0', { emissive: '#ffe9a0', emissiveIntensity: 3.2 });
     this.lampOffMat = toonMat('#8a8f96');
-    const coneMat = new THREE.MeshBasicMaterial({ color: '#ffe9a0', transparent: true, opacity: 0.08, depthWrite: false, side: THREE.DoubleSide });
+    // Haz de luz: fuerte junto al foco y apagándose hacia el piso, sumado a lo que hay detrás como la luz de verdad
+    const degrade = document.createElement('canvas'); degrade.width = 4; degrade.height = 64;
+    const dg = degrade.getContext('2d'), gr = dg.createLinearGradient(0, 0, 0, 64);
+    gr.addColorStop(0, '#ffffff'); gr.addColorStop(0.35, '#6a6a6a'); gr.addColorStop(1, '#000000');
+    dg.fillStyle = gr; dg.fillRect(0, 0, 4, 64);
+    const coneMat = new THREE.MeshBasicMaterial({ color: '#ffe9a0', transparent: true, opacity: 0.16, alphaMap: new THREE.CanvasTexture(degrade), depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, fog: false });
     const count = Math.round(t.length / 70);
     for (let k = 0; k < count; k++) {
       const s = t.sampleAtFrac(k / count);
@@ -548,8 +579,17 @@ export class World {
       const x = s.x + s.nx * lat, z = s.z + s.nz * lat, y = t.heightAt(x, z);
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 7, 6), toonMat('#5a5f66')); pole.position.set(x, y + 3.5, z); this.add(pole);
       const bulb = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.35, 0.5), this.lampOffMat); bulb.position.set(x - s.nx * side * 0.6, y + 7, z - s.nz * side * 0.6); this.add(bulb);
+      // el foco apunta a la pista, un poco pasando el borde; el haz nace justo en el foco (antes estaba
+      // corrido tres metros hacia la pista y caía vertical, así que no salía de la lámpara)
+      const ax = s.x + s.nx * side * t.W * 0.25, az = s.z + s.nz * side * t.W * 0.25;
+      const blanco = new THREE.Vector3(ax, t.heightAt(ax, az), az);
+      bulb.lookAt(blanco);
       const light = new THREE.PointLight('#ffe0a0', 60, 40, 1.6); light.position.set(x - s.nx * side * 1.5, y + 6.5, z - s.nz * side * 1.5); light.visible = false; this.add(light);
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(7, 7.5, 12, 1, true), coneMat); cone.position.set(x - s.nx * side * 3, y + 3.6, z - s.nz * side * 3); cone.visible = false; this.add(cone);
+      const haz = blanco.clone().sub(bulb.position), largo = haz.length();
+      const coneGeo = new THREE.ConeGeometry(largo * 0.5, largo, 16, 1, true); coneGeo.translate(0, -largo / 2, 0); // punta en el origen
+      const cone = new THREE.Mesh(coneGeo, coneMat); cone.position.copy(bulb.position);
+      cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), haz.normalize());
+      cone.visible = false; this.add(cone);
       this.lamps.push({ light, bulb, cone });
     }
   }
@@ -591,11 +631,12 @@ export class World {
     if (!t.closed) make(t.samples[t.n - 4], 'LLEGADA');
   }
   // Tres materiales fijos: antes se creaba uno nuevo por luz en cada paso de la cuenta regresiva y ninguno
-  // se liberaba. Emiten fuerte para que el semáforo brille incluso a pleno sol.
+  // se liberaba. Emiten lo justo para un halo chico de noche: más fuerte, pasando debajo del pórtico la
+  // luz verde inundaba la pantalla.
   setStartLights(n, green) {
     if (!this.semaforo) this.semaforo = {
-      verde: toonMat('#4ee04e', { emissive: '#4ee04e', emissiveIntensity: 7 }),
-      rojo: toonMat('#ff3a2a', { emissive: '#ff3a2a', emissiveIntensity: 11 }),
+      verde: toonMat('#4ee04e', { emissive: '#4ee04e', emissiveIntensity: 4.6 }),
+      rojo: toonMat('#ff3a2a', { emissive: '#ff3a2a', emissiveIntensity: 7.5 }),
       apagado: toonMat('#5a1008'),
     };
     const m = this.semaforo;
@@ -785,4 +826,11 @@ export function loadTex(url, srgb, rx, ry, onLoad) {
   const t = _texLoader.load(url, listo, undefined, () => {});
   t.userData.compartido = true;
   _fotosMundo.set(url, t);
+}
+
+// Aclara (k > 0) u oscurece (k < 0) un color '#rrggbb'
+function sombrear(hex, k) {
+  const c = new THREE.Color(hex);
+  if (k < 0) c.multiplyScalar(1 + k); else c.lerp(new THREE.Color('#ffffff'), k);
+  return '#' + c.getHexString();
 }

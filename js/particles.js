@@ -27,6 +27,10 @@ export class Particles {
           float propia = step(1.01, max(vC.r, max(vC.g, vC.b))); gl_FragColor = vec4(mix(vC * uLuz, vC, propia), a); }`,
     });
     this.points = new THREE.Points(geo, mat); this.points.frustumCulled = false;
+    // Polvo y humo se dibujan después de todo lo transparente. three ordena los transparentes por la distancia
+    // al centro de cada objeto, y este está anclado en el origen del mundo: el orden salía al azar y los vidrios
+    // de los autos quedaban limpios por encima de la nube que tenían adelante.
+    this.points.renderOrder = 10;
     this.wind = { x: 0, z: 0 };
     this.geo = geo;
     scene.add(this.points);

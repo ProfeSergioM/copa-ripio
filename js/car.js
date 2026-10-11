@@ -34,8 +34,8 @@ const lightBroken = toonMat('#4a4a4a');
 const tailOff = toonMat('#c8342a', { emissive: '#4a0c08', emissiveIntensity: 0.35 });
 // El brillo se dispara por luminancia, y en el rojo puro pesa poco (0,3 por unidad): por eso las traseras
 // emiten bastante más fuerte que los faros blancos para llegar a brillar de noche.
-const tailOn = toonMat('#ff4a3a', { emissive: '#ff2a1a', emissiveIntensity: 7 });
-const tailNight = toonMat('#ff3a2a', { emissive: '#ff2a1a', emissiveIntensity: 4.2 }); // de posición, de noche
+const tailOn = toonMat('#ff4a3a', { emissive: '#ff2a1a', emissiveIntensity: 11 });
+const tailNight = toonMat('#ff3a2a', { emissive: '#ff2a1a', emissiveIntensity: 7.5 }); // de posición, de noche
 const outline = outlineMat();
 const woodMat = toonMat('#a8743c');
 const suitcaseMats = ['#b5533c', '#3f6fb5', '#c9a26b', '#6f8f4b'].map(c => toonMat(c));
@@ -484,9 +484,9 @@ export function createCarVisual(spec) {
   for (const o of vis.children) if (o.isMesh && o.material === outline && o.geometry === geo) protegidos.add(o);
   const fusionadas = fusionarEn(vis, protegidos);
   // nivel de detalle: de lejos se ocultan cromados, costuras, piloto, paragolpes y adornos de rueda.
-  // Quedan siempre la carroceria, las ruedas, los vidrios, las luces y el numero.
-  const lod = fusionadas.filter(m => m.material !== glassMat && m.material !== numMat)
-    .concat(adornos, parts.map(p => p.mesh));
+  // Quedan siempre la carroceria, las ruedas, los vidrios, las luces, el numero y las piezas grandes
+  // (alerón, portaequipajes, accesorios): esas cambian la silueta y se notaba cuando aparecían.
+  const lod = fusionadas.filter(m => m.material !== glassMat && m.material !== numMat).concat(adornos);
 
   return {
     root, vis, body, bodyMat, geo, orig, origCol, parts, headlights, taillights, wheels, spec, shadowBlob, dirt, lod, lodCerca: true,
@@ -534,7 +534,7 @@ export function breakHeadlight(cv, side) {
 
 export function setHeadlights(cv, on) {
   cv.lucesNoche = on;
-  for (const hl of cv.headlights) if (hl.material !== lightBroken) hl.material.emissiveIntensity = on ? 3 : 0.15;
+  for (const hl of cv.headlights) if (hl.material !== lightBroken) hl.material.emissiveIntensity = on ? 4.5 : 0.15;
   if (!cv.braking) for (const t of cv.taillights) t.material = on ? tailNight : tailOff;
 }
 

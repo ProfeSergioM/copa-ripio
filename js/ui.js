@@ -151,11 +151,13 @@ export class UI {
     el.style.animation = 'none'; void el.offsetWidth; el.style.animation = '';
     clearTimeout(this.tauntTimer); this.tauntTimer = setTimeout(() => el.classList.add('hidden'), 4200);
   }
-  countdown(text, go = false) {
-    const el = $('countdown');
-    if (text == null) { el.classList.add('hidden'); return; }
-    el.classList.remove('hidden'); el.classList.toggle('go', go); el.textContent = text;
-    el.style.animation = 'none'; void el.offsetWidth; el.style.animation = '';
+  // Semáforo de largada: se prenden las rojas de a una y al final las tres en verde. null lo apaga.
+  semaforo(encendidas, verde = false) {
+    const el = $('semaforo');
+    if (encendidas == null) { el.classList.add('oculto'); clearTimeout(this._semT); this._semT = setTimeout(() => el.classList.add('hidden'), 500); return; }
+    clearTimeout(this._semT);
+    el.classList.remove('hidden', 'oculto');
+    el.querySelectorAll('.foco').forEach((f, i) => { f.className = 'foco' + (verde ? ' verde' : i < encendidas ? ' rojo' : ''); });
   }
   banner(text, ms = 2500) {
     const el = $('banner'); el.textContent = text; el.classList.remove('hidden');
