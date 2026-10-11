@@ -61,6 +61,7 @@ export class GameAudio {
     this.musicNext = 0; this.musicStep = 0; this.musicTimer = null;
     this.startMusicScheduler();
     this.loadSamples();
+    this.listo = this.cargarMotor();
   }
 
   // ---- muestras reales (CC0 de OpenGameArt): banco de motor por régimen, chirrido, choque, viento, arranque
@@ -96,6 +97,57 @@ export class GameAudio {
       }
     }
     return buf;
+  }
+  // El motor nuevo: explosión por explosión en un AudioWorklet (js/motor-worklet.js). Se carga aparte y, cuando
+  // está, reemplaza al sintetizador de osciladores en el jugador y en los rivales. Sin AudioWorklet queda el viejo.
+  async cargarMotor() {
+    const ctx = this.ctx;
+    if (!ctx.audioWorklet) return false;
+    try { await ctx.audioWorklet.addModule(new URL('./motor-worklet.js', import.meta.url)); } catch (e) { console.warn('sin motor nuevo', e); return false; }
+    const viejo = this.engine, nuevo = this.vozExplosiones(true, 11);
+    nuevo.sample = viejo.sample; nuevo.out.connect(this.master);
+    this.engine = nuevo; this.apagarVoz(viejo);
+    this.aiVoices = this.aiVoices.map((v, i) => {
+      const n = this.vozExplosiones(false, 23 + i * 7);
+      n.pan = v.pan; n.out.connect(v.pan); n.car = v.car;
+      this.apagarVoz(v, true);
+      return n;
+    });
+    return true;
+  }
+  apagarVoz(v, dejarPan = false) {
+    try { v.out.disconnect(); } catch (e) { /* nada */ }
+    for (const o of v.oscs || []) { try { o.o.stop(); } catch (e) { /* nada */ } }
+    for (const n of [v.lfo, v.rasp]) { if (n) try { n.stop(); } catch (e) { /* nada */ } }
+    if (!dejarPan && v.pan) try { v.pan.disconnect(); } catch (e) { /* nada */ }
+  }
+  // Una voz de motor: explosiones -> color del caño (resonancias fijas) -> brillo según carga -> saturación suave.
+  // La rica (jugador) suma la admisión del carburador y el silbido de la caja.
+  vozExplosiones(rica, semilla) {
+    const ctx = this.ctx;
+    const motor = new AudioWorkletNode(ctx, 'motor-explosiones', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1], processorOptions: { semilla } });
+    const filtro = (tipo, f, q, g = 0) => { const b = ctx.createBiquadFilter(); b.type = tipo; b.frequency.value = f; b.Q.value = q; b.gain.value = g; return b; };
+    const hp = filtro('highpass', 32, 0.7);
+    const cuerpo = filtro('peaking', 115, 0.9, 4);     // el golpe grave del motor
+    const cano = filtro('peaking', 520, 1.3, 5);       // la nota del caño de escape
+    const bocina = filtro('peaking', 950, 1.3, 3);     // segunda resonancia del caño
+    const rasgado = filtro('peaking', 1900, 1.6, 3);   // el rasgado que lo hace sonar a motor chico
+    const lp = filtro('lowpass', 2500, 0.6);
+    const sat = ctx.createWaveShaper();
+    const curva = new Float32Array(512); for (let i = 0; i < 512; i++) { const x = i / 256 - 1; curva[i] = Math.tanh(x * 1.6) / Math.tanh(1.6); } sat.curve = curva;
+    const pre = ctx.createGain(); pre.gain.value = 0.9;
+    const out = ctx.createGain(); out.gain.value = 0;
+    motor.connect(hp); hp.connect(cuerpo); cuerpo.connect(cano); cano.connect(bocina); bocina.connect(rasgado); rasgado.connect(lp); lp.connect(pre); pre.connect(sat); sat.connect(out);
+    const v = { motor, out, lp, rpm: 1000, load: 0, cambioHasta: 0 };
+    if (rica) {
+      const ruido = ctx.createBufferSource(); ruido.buffer = this.noiseBuf; ruido.loop = true;
+      const bp = filtro('bandpass', 2600, 0.8); const g = ctx.createGain(); g.gain.value = 0;
+      ruido.connect(bp); bp.connect(g); g.connect(out); ruido.start();
+      const sil = ctx.createOscillator(); sil.type = 'sine'; const sg = ctx.createGain(); sg.gain.value = 0;
+      sil.connect(sg); sg.connect(out); sil.start();
+      Object.assign(v, { adm: g, sil, silG: sg, rasp: ruido });
+    }
+    return v;
   }
   // seis lazos en paralelo por voz; se mezclan los dos vecinos al régimen actual y se corrige la velocidad
   makeSampleLayers(voice) {
@@ -169,6 +221,7 @@ export class GameAudio {
       else v.sample.out.gain.setTargetAtTime(0, t, 0.05);
       gain *= P.synth;
     }
+    if (v.motor) { this.setExplosiones(v, rpm, load, gain, misfire, doppler, P, t); return; }
     const f = rpm / 30 * doppler * P.pitch; // 4 cilindros, 4 tiempos
     for (const { o, mult } of v.oscs) o.frequency.setTargetAtTime(f * mult, t, 0.03);
     if (v.raspF) { v.raspF.frequency.setTargetAtTime(f * 6 + 300, t, 0.05); v.raspG.gain.setTargetAtTime((0.06 + load * 0.2) * P.rasp, t, 0.05); }
@@ -177,6 +230,31 @@ export class GameAudio {
     v.lg.gain.setTargetAtTime(1 + rn * 3, t, 0.1);
     const g = gain * 1.5 * (0.35 + 0.65 * load) * (0.6 + 0.4 * rn) * (misfire ? 0.15 : 1);
     v.out.gain.setTargetAtTime(g, t, misfire ? 0.01 : 0.04);
+  }
+
+  setExplosiones(v, rpm, load, gain, misfire, doppler, P, t) {
+    const prm = v.motor.parameters;
+    const rn = clamp((rpm - 900) / 5400, 0, 1);
+    // cambio de marcha: el pie se levanta un instante
+    if (t < v.cambioHasta) load *= 0.2;
+    // limitador: a fondo contra el tope corta el encendido unas trece veces por segundo
+    const corte = rpm > 6000 && load > 0.75 ? Math.floor(t * 13) % 2 : 0;
+    prm.get('rpm').setTargetAtTime(rpm * P.pitch * doppler, t, 0.02);
+    prm.get('carga').setTargetAtTime(load, t, 0.03);
+    prm.get('aspereza').setTargetAtTime(P.rasp, t, 0.1);
+    prm.get('irregular').setTargetAtTime(clamp(0.6 + (P.lfo - 9) * 0.1, 0.3, 1.4), t, 0.1);
+    prm.get('fallo').setValueAtTime(misfire ? 1 : 0, t);
+    prm.get('corte').setValueAtTime(corte, t);
+    // con carga se abre el brillo; soltando se apaga
+    v.lp.frequency.setTargetAtTime((900 + load * 3200 + rn * 2600) * P.filt, t, 0.05);
+    // más fuerte con el pie y con el régimen
+    const g = gain * 0.85 * (0.55 + 0.45 * load) * (0.68 + 0.32 * rn); // soltando cae unos 6 a 8 dB, como uno de verdad
+    v.out.gain.setTargetAtTime(g, t, 0.03);
+    if (v.adm) {
+      v.adm.gain.setTargetAtTime(0.06 * load * (0.3 + 0.7 * rn) * clamp(P.rasp, 0.4, 1.6), t, 0.05);
+      v.sil.frequency.setTargetAtTime(rpm / 30 * 4.5, t, 0.03);
+      v.silG.gain.setTargetAtTime(0.012 * rn, t, 0.1);
+    }
   }
 
   // Los sonidos puntuales (golpes, bocinas, petardeo, notas) arman una cadena de nodos nueva cada vez.
@@ -236,7 +314,11 @@ export class GameAudio {
     if (s > 0.35) { this.tone(1900 + Math.random() * 600, 'triangle', 0.12 * s, 0.35, pan, 0.9); this.tone(3100 + Math.random() * 800, 'sine', 0.06 * s, 0.5, pan, 0.95); }
   }
   landing(strength) { if (this.ctx) { this.burst(150, 0.6, clamp(strength / 12, 0.1, 0.8), 0.25); } }
-  gearShift() { if (this.ctx) this.burst(900, 2, 0.1, 0.05); }
+  gearShift() {
+    if (!this.ctx) return;
+    if (this.engine && this.engine.motor) this.engine.cambioHasta = this.ctx.currentTime + 0.11; // el pie se levanta
+    this.burst(1300, 3, 0.05, 0.03); this.tone(75, 'sine', 0.05, 0.07, 0, 0.8);       // clac de la palanca
+  }
   horn(pan = 0, ai = false) {
     if (!this.ctx) return;
     const base = ai ? 380 + Math.random() * 120 : 440;

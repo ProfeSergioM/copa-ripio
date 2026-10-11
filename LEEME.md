@@ -272,6 +272,29 @@ acelerón: grabado (muestras cruzadas por régimen), Fitito de fábrica (sinteti
 (rasposo, con petardeo), preparado de picadas (gira más alto; es el que viene por defecto) y grabado con
 escape libre. El perfil vale para el auto propio y para los rivales.
 
+### Motor por explosiones
+
+El sintetizador ya no son ondas de sierra y cuadradas atadas al régimen, que sonaban a zumbido: un
+AudioWorklet (`js/motor-worklet.js`) genera explosión por explosión, cuatro cada dos vueltas. Cada una es un
+pulso de presión más una ráfaga de ruido que crece con la carga, y los cuatro cilindros no son idénticos:
+cada uno empuja un poco distinto y llega un poco antes o después. Después pasa por el color del caño, que
+son resonancias fijas que no se mueven con el régimen: cuerpo en 115 Hz, caño en 520 y 950 Hz, rasgado en
+1,9 kHz. Soltando a régimen alto las explosiones se aflojan y alguna se pierde, que es el burbujeo.
+
+- Con el pie se abre el brillo y soltando se apaga, además de bajar unos 6 a 8 dB.
+- El cambio de marcha levanta el pie una décima y suena un clac de palanca.
+- A fondo contra el tope, el limitador corta el encendido trece veces por segundo.
+- El auto propio suma la admisión del carburador y el silbido de la caja.
+- Sin AudioWorklet (navegadores viejos) queda el sintetizador anterior.
+
+Medido con el perfil por defecto, a fondo entre 4.500 y 5.500 vueltas: el centroide del espectro pasó de
+366 a 963 Hz, y la banda del rasgado (500 a 1.500 Hz) del 9 al 20 % de la energía. Antes, soltar sólo bajaba
+el volumen y dejaba el mismo timbre. El nivel general quedó igual que antes, sin chasquidos ni recorte.
+
+Para medir o escuchar cambios sin depender de la placa de audio está `herramientas/grabar-motor.js`: graba
+un recorrido real del auto (régimen, acelerador, marchas) y lo hace sonar fuera de tiempo real con el motor
+del juego, sin el resto de los sonidos, y lo devuelve como WAV. Se usa desde la consola de la página.
+
 ## Ambiente
 
 Parrilla detrás de la tribuna, camionetas de hinchas estacionadas y rollos de pasto en el campo. La bruma
