@@ -1,6 +1,6 @@
 // Pilotos rivales: línea de carrera, velocidad objetivo por curvatura, esquive, errores y recuperación.
 import { clamp, wrapAngle, lerp, sign, mulberry32 } from './util.js';
-import { GRAVITY, CAR, SURFACES } from './config.js';
+import { GRAVITY, CAR, SURFACES, LARGADA } from './config.js';
 import { steerLimit, resetCarAt } from './physics.js';
 
 // Línea de carrera aproximada (exterior-interior-exterior) por muestra.
@@ -46,7 +46,21 @@ export class AIDriver {
 
   update(dt, cars, raceTime, greenTime) {
     const c = this.car, t = this.track, s = t.samples, n = t.n, inp = this.input;
-    if (greenTime == null || raceTime < greenTime + this.reaction) { inp.throttle = 0; inp.brake = 0; inp.steer = 0; inp.handbrake = true; this.stuckT = -1.5; return inp; }
+    if (greenTime == null || raceTime < greenTime + this.reaction) {
+      inp.brake = 0; inp.steer = 0; inp.handbrake = true; this.stuckT = -1.5;
+      // En la grilla acelera en vacío buscando la franja del cuentavueltas. La puntería depende de la habilidad
+      // y los más agresivos apuntan más arriba, así que algunos se pasan y patinan.
+      if (c.frozen) {
+        if (this.revObjetivo == null) {
+          // con estos errores la mitad sale perfecta, un cuarto bien, uno de cada seis corto y uno de cada diez patina
+          const error = (this.rnd() + this.rnd() + this.rnd() - 1.5) * 2 * (450 + (1 - this.skill) * 3200);
+          this.revObjetivo = clamp((LARGADA.desde + LARGADA.hasta) / 2 + (this.aggr - 0.5) * 1000 + error, 1500, CAR.redline * 0.97);
+        }
+        const pie = (this.revObjetivo - CAR.idleRpm) / (CAR.redline * 0.97 - CAR.idleRpm);
+        inp.throttle = clamp(pie + (this.revObjetivo - c.rpm) * 0.00015, 0, 1);
+      } else inp.throttle = 0;
+      return inp;
+    }
     const speed = c.speed;
 
     // deriva lenta del sesgo lateral: reparte a los autos por el ancho

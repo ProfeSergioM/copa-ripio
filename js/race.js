@@ -5,7 +5,7 @@ import { t } from './idioma.js';
 import { createCar, stepCar, collideCars, collideBarrier, impactZone, applyDamage, resetCarAt } from './physics.js';
 import { createCarVisual, disposeCarVisual, deformBody, detachParts, breakHeadlight, setHeadlights, setBrakeLights, setDirt, createRivalStar } from './car.js';
 import { AIDriver, buildRacingLine } from './ai.js';
-import { CAR, SURFACES, RACE } from './config.js';
+import { CAR, SURFACES, RACE, LARGADA } from './config.js';
 import { clamp, formatTime, dampTo } from './util.js';
 import { Replay, STRIDE } from './replay.js';
 
@@ -120,7 +120,7 @@ export class Race {
     if (this.phase === 'countdown') {
       this.countT += dt;
       const n = Math.floor(this.countT);
-      if (n >= 0 && n < RACE.countdown && n !== this.countShown) { this.countShown = n; this.ui.semaforo(n + 1); this.audio.beep(false); this.world.setStartLights(n + 1, false); }
+      if (n >= 0 && n < RACE.countdown && n !== this.countShown) { this.countShown = n; this.ui.semaforo(n + 1); this.audio.beep(false); this.world.setStartLights(n + 1, false); if (n === 0 && !this.player.remote) this.say('previa', t('Acelerá y mantené las vueltas en la franja verde'), '', 0); }
       if (this.countT >= RACE.countdown) {
         this.phase = 'racing'; this.raceTime = 0; this.greenTime = 0; this.ui.semaforo(3, true); this.audio.beep(true); this.world.setStartLights(3, true);
         setTimeout(() => this.ui.semaforo(null), 1100); for (const c of this.cars) c.state.frozen = false; this.audio.cheerNow(0.8);
@@ -147,6 +147,13 @@ export class Race {
       this.collide();
     }
     this.processEvents();
+    const lj = this.player.state.largada;
+    if (lj && !this.largadaAvisada) {
+      this.largadaAvisada = true;
+      if (lj.tipo === 'perfecta') { this.say('largada', t('¡Largada perfecta!'), 'good', 0); this.audio.cheerNow(0.5); }
+      else if (lj.tipo === 'buena') this.say('largada', t('¡Buena largada!'), 'good', 0);
+      else if (lj.tipo === 'patinada') this.say('largada', t('¡Te pasaste de vueltas y patinaste!'), 'bad', 0);
+    }
     if (this.phase !== 'idle') { this.lapLogic(dt); this.finishLogic(dt); this.replay.record(dt, this.cars, this.raceTime); }
     this.orderT -= dt; if (this.orderT <= 0) { this.orderT = 0.2; this.computeOrder(); }
     this.playerFeedback(dt);
@@ -345,6 +352,13 @@ export class Race {
   }
   nearGrandstand() { const g = this.world.grandstandPos; return g && Math.hypot(this.player.state.x - g.x, this.player.state.z - g.z) < 60; }
 
+  // la franja del cuentavueltas, en la misma escala que rpm del tablero; sólo mientras corre la cuenta regresiva
+  franja() {
+    if (this.phase !== 'countdown') return null;
+    const f = (r) => (r - 800) / (CAR.redline - 800);
+    return [f(LARGADA.desde), f(LARGADA.hasta)];
+  }
+
   say(key, text, kind, cooldown) {
     const now = this.time;
     if (cooldown && this.lastToast[key] && now - this.lastToast[key] < cooldown) return;
@@ -478,7 +492,7 @@ export class Race {
       let rank = 1; if (mine != null) rank = times.filter(x => x.t < mine).length + 1;
       times.slice(0, 5).forEach((x, i) => rows.push({ pos: i + 1, name: x.name, color: (this.roster.find(r => r.name === x.name) || {}).color || '#888', me: false, gap: formatTime(x.t) }));
       rows.push({ pos: mine != null ? rank : '–', name: p.name, color: p.color, me: true, gap: formatTime(mine != null ? mine : s.lapTime) });
-      return { position: mine != null ? rank : '–', total: times.length + 1, lap: 0, laps: 1, lapTime: s.lapTime, best: null, record: this.record ? this.record.bestLap : null, gear: s.gear, reverse: s.reverse, damage: s.damage, slipstream: false, wrongWay: s.wrongWay > 1.5, order: rows, kmh: s.speed * 3.6, rpm: (s.rpm - 800) / (CAR.redline - 800), timetrial: true, sector: this.track.sector(s.trackIdx), progress: s.progress / this.track.length };
+      return { position: mine != null ? rank : '–', total: times.length + 1, lap: 0, laps: 1, lapTime: s.lapTime, best: null, record: this.record ? this.record.bestLap : null, gear: s.gear, reverse: s.reverse, damage: s.damage, slipstream: false, wrongWay: s.wrongWay > 1.5, order: rows, kmh: s.speed * 3.6, rpm: (s.rpm - 800) / (CAR.redline - 800), franja: this.franja(), timetrial: true, sector: this.track.sector(s.trackIdx), progress: s.progress / this.track.length };
     }
     const show = new Set([0, 1, 2, 3, 4]);
     const myIdx = order.indexOf(p);
@@ -498,7 +512,7 @@ export class Race {
       if (i > 0) { const dd = leader.state.raceDist - c.state.raceDist; gap = c.state.finished && leader.state.finished ? '+' + (c.state.finishTime - leader.state.finishTime).toFixed(1) + 's' : '+' + Math.round(dd) + 'm'; }
       rows.push({ pos: i + 1, name: c.name + (c.isRival ? ' ★' : ''), color: c.color, me: c === p, gap });
     }
-    return { position: p.position, total: this.cars.length, lap: s.lap, laps: this.laps, lapTime: s.lapTime, best: s.bestLap, record: this.record ? this.record.bestLap : null, gear: s.gear, reverse: s.reverse, damage: s.damage, slipstream: s.slipstream > 0.5, wrongWay: s.wrongWay > 1.5, order: rows, kmh: s.speed * 3.6, rpm: (s.rpm - 800) / (CAR.redline - 800), rival: this.rival ? { name: this.rival.name, pos: this.rival.position } : null, arrowL, arrowR, leader: order[0] };
+    return { position: p.position, total: this.cars.length, lap: s.lap, laps: this.laps, lapTime: s.lapTime, best: s.bestLap, record: this.record ? this.record.bestLap : null, gear: s.gear, reverse: s.reverse, damage: s.damage, slipstream: s.slipstream > 0.5, wrongWay: s.wrongWay > 1.5, order: rows, kmh: s.speed * 3.6, rpm: (s.rpm - 800) / (CAR.redline - 800), franja: this.franja(), rival: this.rival ? { name: this.rival.name, pos: this.rival.position } : null, arrowL, arrowR, leader: order[0] };
   }
 
   dispose() {

@@ -36,6 +36,20 @@ export const TRACK = {
   sampleStep: 1.0,
 };
 
+// Largada con técnica. Durante la cuenta regresiva el auto está quieto pero el motor responde al acelerador
+// (sube mientras se aprieta y baja al soltar, con inercia). Lo que vale es el régimen justo cuando se prende
+// el verde: en la franja hay empuje extra que se apaga en 'dur' segundos; pasado de vueltas, el auto patina.
+// Sin acelerar en la previa la largada es la de siempre: nadie pierde por no conocer la técnica.
+export const LARGADA = {
+  desde: 3600, hasta: 4900, // la franja verde del cuentavueltas
+  borde: 700,               // rampas a los costados de la franja
+  dur: 1.6,                 // cuánto dura el efecto después del verde
+  agarre: 0.12,             // tracción de atrás extra con la largada perfecta (se apaga de a poco)
+  empuje: 0.05,             // y un poco de par
+  perdida: 0.3,             // tracción que se pierde patinando
+  subida: 2.6, bajada: 2.2, // inercia del motor en vacío (constante de amortiguación por segundo)
+};
+
 export const RACE = {
   cars: 20,
   laps: 3,

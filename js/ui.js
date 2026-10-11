@@ -73,6 +73,13 @@ export class UI {
     const cx = 198, cy = 146, R = 92;
     const a0 = Math.PI * 1.08, a1 = Math.PI * 1.92;
     g.beginPath(); g.arc(cx, cy, R - 14, a0, a1); g.lineWidth = 11; g.strokeStyle = '#a08c6b'; g.stroke();
+    // durante la cuenta regresiva: la franja donde hay que dejar la aguja para largar bien
+    if (d && d.franja) {
+      const [f0, f1] = d.franja, dentro = rpmFrac >= f0 && rpmFrac <= f1;
+      g.beginPath(); g.arc(cx, cy, R - 14, a0 + (a1 - a0) * f0, a0 + (a1 - a0) * f1); g.lineWidth = 17;
+      g.strokeStyle = dentro ? '#5ed35e' : '#3f9a3f'; g.stroke();
+      g.lineWidth = 11;
+    }
     g.beginPath(); g.arc(cx, cy, R - 14, a0, a0 + (a1 - a0) * clamp(rpmFrac, 0, 1)); g.strokeStyle = rpmFrac > 0.92 ? '#d94a3a' : '#e2a33b'; g.stroke();
     g.fillStyle = tinta; g.font = 'bold 12px Fredoka, sans-serif';
     for (let v = 0; v <= 160; v += 20) {

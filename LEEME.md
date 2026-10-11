@@ -28,6 +28,25 @@ y abrir <http://localhost:5173>. La dependencia `three` ya está en `node_module
 | R | volver a la pista · H bocina · M silencio · Esc pausa (y salta la repetición) |
 | Joystick | palanca izquierda, gatillos, A acelera, X frena, B freno de mano, Y cámara, Start pausa |
 
+## Largada con técnica
+
+Durante la cuenta regresiva el auto está quieto pero el motor responde al acelerador: sube de vueltas
+mientras se aprieta y baja al soltar, con algo de inercia. El cuentavueltas muestra una franja verde
+(3.600 a 4.900 vueltas) y lo que vale es dónde está el motor cuando se prende el verde. Con el teclado,
+que es todo o nada, se mantiene en la franja tocando el acelerador.
+
+- **En la franja**, el embrague patina y el motor se sostiene arriba hasta que las ruedas lo alcanzan,
+  con algo más de tracción: unos 0,3 s ganados a los 100 m, casi un largo de auto.
+- **Sin acelerar en la previa**, la largada es la de siempre. Nadie pierde por no conocer la técnica.
+- **A fondo toda la previa**, el motor llega al corte, el auto patina y sale peor que sin acelerar.
+
+La IA también acelera en la grilla, con un error que depende de su habilidad: la mitad larga perfecto,
+un cuarto bien, uno de cada seis se queda corto y casi uno de cada diez patina.
+
+Por qué el embrague: la física no tiene embrague, y al soltar el auto el motor caía enseguida al régimen
+de las ruedas paradas, que es el ralentí y rinde el 65 % del par. Probado primero con más par y después
+con más tracción, casi no cambiaba nada (0,1 s), y quitarle par al que patinaba lo terminaba ayudando.
+
 ## El campeonato
 
 Siete fechas con premios en plata y puntos 25-20-17… para los 20:
@@ -310,7 +329,10 @@ node herramientas/solo.mjs 0.9               # traza por segundo de un piloto IA
 node herramientas/giro.mjs 60 2 1            # fuerzas en un giro a fondo desde 60 km/h
 node herramientas/curva.mjs                  # aceleración en curva con volante fijo
 node herramientas/tramo.mjs 6                # tiempos de 6 pilotos IA en el tramo del cerro
+node herramientas/largada.mjs                # cuánto se gana o pierde según el régimen al verde
 ```
+
+En el navegador, `?auto` hace que el auto del jugador maneje solo y `?mudo` silencia el juego.
 
 Sirven para calibrar física e IA con números antes de tocar el juego.
 

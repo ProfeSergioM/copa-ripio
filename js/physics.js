@@ -1,5 +1,5 @@
 // Física del auto (modelo bicicleta 2D + altura del terreno) y colisiones por impulsos.
-import { CAR, SURFACES, GRAVITY } from './config.js';
+import { CAR, SURFACES, GRAVITY, LARGADA } from './config.js';
 import { clamp, lerp, sign, wrapAngle, dampTo } from './util.js';
 
 export function createCar(id, x, z, heading) {
@@ -34,6 +34,20 @@ function torqueCurve(rpm) {
   return 0.6;
 }
 
+// Calidad de la largada según el régimen al verde: 1 en la franja, rampas a los costados, 0 sin acelerar
+// (largada de siempre) y negativa pasado de vueltas (patina). tipo sirve para el cartel del jugador.
+export function calidadLargada(rpm) {
+  const L = LARGADA, tope = CAR.redline * 0.97;
+  let calidad;
+  if (rpm < L.desde - L.borde) calidad = 0;
+  else if (rpm < L.desde) calidad = (rpm - (L.desde - L.borde)) / L.borde;
+  else if (rpm <= L.hasta) calidad = 1;
+  else if (rpm < L.hasta + L.borde) calidad = 1 - (rpm - L.hasta) / L.borde;
+  else calidad = -clamp(0.35 + 0.65 * (rpm - L.hasta - L.borde) / Math.max(tope - L.hasta - L.borde, 1), 0.35, 1);
+  const tipo = calidad >= 0.95 ? 'perfecta' : calidad > 0.3 ? 'buena' : calidad < 0 ? 'patinada' : 'normal';
+  return { calidad, tipo, rpm, t: LARGADA.dur };
+}
+
 export function stepCar(c, track, dt, input) {
   const m = CAR.mass, g = GRAVITY;
   const h = c.heading;
@@ -48,7 +62,20 @@ export function stepCar(c, track, dt, input) {
   c.surface = surfName;
   const surf = SURFACES[surfName];
   let mu = surf.grip * c.tune.grip * (track.gripScale || 1) * (1 - 0.12 * Math.max(c.damage.left, c.damage.right));
+  const acelerador = clamp(input.throttle || 0, 0, 1); // lo que pide el pie, antes de frenar el auto en la grilla
   if (c.frozen) { input = { steer: input.steer, throttle: 0, brake: 0, handbrake: true }; c.vx = c.vz = 0; c.yawRate = 0; vF = vL = 0; }
+  // al soltarse el auto se mide la largada con el régimen que tenía el motor en ese instante
+  if (c.enPrevia && !c.frozen) { c.enPrevia = false; c.largada = calidadLargada(c.rpm); }
+  // En la salida el auto está limitado por la tracción (las ruedas ya patinan), así que la largada actúa
+  // sobre el agarre de atrás: la buena pone la potencia en el piso y la pasada de vueltas la pierde. Probado con
+  // más par: casi no cambiaba nada, y quitarle par al que patinaba lo ayudaba (herramientas/largada.mjs).
+  let empuje = 1, traccion = 1, patina = 0;
+  if (c.largada && c.largada.t > 0 && !c.frozen) {
+    c.largada.t -= dt;
+    const f = clamp(c.largada.t / LARGADA.dur, 0, 1), q = c.largada.calidad;
+    if (q > 0) { traccion = 1 + LARGADA.agarre * q * f; empuje = 1 + LARGADA.empuje * q * f; }
+    else if (q < 0 && input.throttle > 0.2) { patina = -q * f; traccion = 1 - LARGADA.perdida * patina; }
+  }
 
   // ---- marcha atrás: freno sostenido medio segundo con el auto parado
   if (!c.reverse) {
@@ -93,14 +120,24 @@ export function stepCar(c, track, dt, input) {
   let rpmTarget = Math.max(CAR.idleRpm, rpmWheels);
   if (c.wheelspin > 0) rpmTarget = lerp(rpmTarget, CAR.redline * 0.88, c.wheelspin * 0.8);
   if (c.airborne && throttle > 0.3) rpmTarget = CAR.redline;
-  c.rpm = dampTo(c.rpm, rpmTarget, 16, dt);
+  // Embrague patinando: la física no tiene embrague y al soltar el motor caía enseguida al régimen de las ruedas
+  // paradas (ralentí, 65 % del par). En la salida el motor se sostiene en el régimen que tenía al verde hasta
+  // que las ruedas lo alcanzan: eso es lo que hace buena a una largada con vueltas.
+  if (c.largada && c.largada.t > 0 && !c.frozen && throttle > 0.2) rpmTarget = Math.max(rpmTarget, c.largada.rpm);
+  if (patina > 0) rpmTarget = lerp(rpmTarget, CAR.redline * 0.92, patina); // las ruedas patinan y el motor se dispara
+  if (c.frozen) {
+    // en la grilla: el motor gira en vacío y sigue al acelerador con inercia
+    const objetivo = CAR.idleRpm + acelerador * (CAR.redline * 0.97 - CAR.idleRpm);
+    c.rpm = dampTo(c.rpm, objetivo, objetivo > c.rpm ? LARGADA.subida : LARGADA.bajada, dt);
+    c.enPrevia = true; c.throttle = acelerador; // para el sonido: el motor acelera en vacío
+  } else c.rpm = dampTo(c.rpm, rpmTarget, 16, dt);
   c.shiftTimer -= dt;
   if (!c.reverse) {
     if (rpmWheels > CAR.shiftUp && c.gear < CAR.gearRatios.length - 1 && c.shiftTimer <= 0) { c.gear++; c.shiftTimer = CAR.shiftTime; c.shifted = 1; }
     else if (rpmWheels < CAR.shiftDown && c.gear > 0 && c.shiftTimer <= 0) { c.gear--; c.shiftTimer = CAR.shiftTime * 0.6; c.shifted = -1; }
   } else c.gear = 0;
   c.engineHealth = 1 - 0.35 * c.damage.rear;
-  let T = CAR.torqueMax * c.tune.torque * torqueCurve(c.rpm) * throttle * c.engineHealth;
+  let T = CAR.torqueMax * c.tune.torque * torqueCurve(c.rpm) * throttle * c.engineHealth * empuje;
   if (c.rpm > CAR.redline) T *= 0.4;
   if (c.shiftTimer > 0) T *= 0.55;
   // fallos de encendido con el motor golpeado
@@ -118,7 +155,7 @@ export function stepCar(c, track, dt, input) {
   const transfer = clamp(m * c.accFwd * 0.45 * CAR.cgHeight / CAR.wheelbase, -m * g * 0.12, m * g * 0.12);
   const FzF = m * g * CAR.lr / CAR.wheelbase - transfer;
   const FzR = m * g * CAR.lf / CAR.wheelbase + transfer;
-  let maxF = mu * FzF * 1.06, maxR = mu * FzR * 1.08; // gomas anchas de ripio
+  let maxF = mu * FzF * 1.06, maxR = mu * FzR * 1.08 * traccion; // gomas anchas de ripio
 
   // ---- fuerzas longitudinales
   const dirv = sign(vF) || 1;
@@ -129,6 +166,7 @@ export function stepCar(c, track, dt, input) {
   if (handbrake && speedAbs > 0.3) { FxR = -dirv * maxR * 0.85; latScaleR = 0.3; }
   c.wheelspin = 0; c.frontLock = false;
   if (Math.abs(FxR) > maxR) { c.wheelspin = Fdrive > 0 ? clamp((Math.abs(FxR) - maxR) / (maxR + 1), 0, 1) : 0; FxR = sign(FxR) * maxR * 0.9; latScaleR *= 0.93; }
+  if (patina > 0) c.wheelspin = Math.max(c.wheelspin, patina * 0.7); // humo y chirrido de la largada pasada de vueltas
   if (Math.abs(FxF) > maxF) FxF = sign(FxF) * maxF * 0.9;
   const latAvailF = Math.sqrt(Math.max(0, maxF * maxF - FxF * FxF)) * latScaleF;
   const latAvailR = Math.sqrt(Math.max(0, maxR * maxR - (FxR * 0.6) * (FxR * 0.6))) * latScaleR;
