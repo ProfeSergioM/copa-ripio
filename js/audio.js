@@ -21,7 +21,7 @@ export class GameAudio {
     if (this.ctx) { if (this.ctx.state === 'suspended' && this.ctx.resume) this.ctx.resume(); return; }
     // latencyHint 'playback': búfer más grande, sin cortes cuando el hilo de audio compite con el dibujo
     const ctx = this.ctx = existing || new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'playback' });
-    this.master = ctx.createGain(); this.master.gain.value = this.volume * 1.2;
+    this.master = ctx.createGain(); this.master.gain.value = this.muted ? 0 : this.volume * 1.2;
     // compresor suave y, al final, un limitador duro para que no sature
     this.comp = ctx.createDynamicsCompressor(); this.comp.threshold.value = -14; this.comp.ratio.value = 3; this.comp.knee.value = 18; this.comp.attack.value = 0.01; this.comp.release.value = 0.25;
     this.limiter = ctx.createDynamicsCompressor(); this.limiter.threshold.value = -6; this.limiter.knee.value = 0; this.limiter.ratio.value = 20; this.limiter.attack.value = 0.002; this.limiter.release.value = 0.12;

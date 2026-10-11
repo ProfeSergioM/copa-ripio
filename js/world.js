@@ -5,8 +5,10 @@ import { toonMat } from './car.js';
 import { mulberry32, clamp, lerp, smoothstep, pick } from './util.js';
 import { SPONSORS } from './config.js';
 import { Rain } from './particles.js';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
+import { ESPECIES, materialVegetacion, bulto, normalesDeVolumen } from './vegetacion.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { sembrarOrillas, fardo } from './ornamentos.js';
 
 const TOD = {
   morning: { sun: [-0.5, 0.55, 0.7], sunCol: '#fff1cf', sunI: 1.9, hemiSky: '#bfe6f5', hemiGround: '#9a8a5c', hemiI: 0.75, top: '#6fc0e0', horizon: '#f6e6c4', fog: '#e6dcc0', fogNear: 220, fogFar: 620, lamps: false, night: false },
@@ -56,7 +58,7 @@ export class World {
       ['Tribuna', () => this.buildGrandstand()],
       ['Campo', () => this.buildFarm()],
       ['Cámaras', () => this.buildTvSpots()],
-      ['Arboleda', () => this.buildTrees()],
+      ['Arboleda', () => { this.buildTrees(); sembrarOrillas(this, toonMat); }],
       ['Detalles', () => { this.buildMarshals(); this.buildLamps(); this.buildBirds(); this.buildGantry(); }],
       ['Ambiente', () => { this.buildCountryside(); if (ATMOSFERA) this.buildAtmosphere(); }],
     ];
@@ -87,22 +89,31 @@ export class World {
         void main(){ vec3 d = normalize(vW - cameraPosition); float h = clamp(d.y, -0.1, 1.0);
           vec3 c = mix(horizon, top, pow(h, 0.55));
           float sd = max(dot(d, normalize(sunDir)), 0.0);
-          c += sunCol * (pow(sd, 260.0) * 5.0 + pow(sd, 6.0) * 0.18);
+          c += sunCol * (pow(sd, 260.0) * 1.2 + pow(sd, 6.0) * 0.18);
           if (night > 0.0) { vec2 g = floor(d.xz / max(d.y,0.05) * 60.0); float st = step(0.985, hash(g)) * smoothstep(0.1, 0.4, d.y); c += vec3(st) * night * 0.9; }
           gl_FragColor = vec4(c, 1.0); }`,
     });
     this.sky = this.add(new THREE.Mesh(new THREE.SphereGeometry(1500, 24, 12), this.skyMat));
     this.scene.fog = new THREE.Fog('#e6dcc0', 220, 620);
-    const cloudMat = toonMat(this.wet ? '#8f9aa4' : '#ffffff', { fog: false });
+    // Nubes de dibujo animado: cada una es una sola malla de varios bultos con las normales saliendo del
+    // centro de la nube, así se sombrea como un volumen esponjoso; abajo un poco más gris. Antes cada bulto
+    // era una esfera aparte con su propia luz y parecían piedras grises flotando.
+    const cloudMat = toonMat(this.wet ? '#8f9aa4' : '#ffffff', { fog: false, vertexColors: true });
     this.clouds = new THREE.Group();
     for (let i = 0; i < (this.wet ? 34 : 16); i++) {
-      const cl = new THREE.Group();
-      const puffs = 3 + Math.floor(this.rnd() * 4);
+      const puffs = 5 + Math.floor(this.rnd() * 5), largo = 30 + this.rnd() * 30;
+      const partes = [];
       for (let p = 0; p < puffs; p++) {
-        const r = 8 + this.rnd() * 12;
-        const m = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 8), cloudMat);
-        m.position.set((p - puffs / 2) * r * 1.1, this.rnd() * 5, (this.rnd() - 0.5) * 8); m.scale.y = 0.55; cl.add(m);
+        const f = puffs > 1 ? p / (puffs - 1) : 0.5, medio = 1 - Math.abs(f - 0.5) * 2;
+        const r = 7 + this.rnd() * 6 + medio * 8;
+        partes.push(bulto(r, 12, 8, (f - 0.5) * largo, r * 0.35 + medio * 4 + this.rnd() * 2, (this.rnd() - 0.5) * 10, 0.6));
       }
+      const geo = mergeGeometries(partes);
+      normalesDeVolumen(geo, new THREE.Vector3(0, 2, 0), 0.75, false, 0.45);
+      const pos = geo.attributes.position, col = new Float32Array(pos.count * 3);
+      for (let k = 0; k < pos.count; k++) { const c = 0.8 + 0.25 * clamp((pos.getY(k) + 2) / 14, 0, 1); col.set([c, c, c * 1.02], k * 3); }
+      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      const cl = new THREE.Mesh(geo, cloudMat);
       cl.position.set((this.rnd() - 0.5) * 1400, (this.wet ? 90 : 140) + this.rnd() * 60, (this.rnd() - 0.5) * 1400);
       cl.userData.speed = 1.5 + this.rnd() * 2;
       this.clouds.add(cl);
@@ -207,8 +218,8 @@ export class World {
       M.makeRotationY(b.idx * 0.7 + k).setPosition(b.x, y, b.z);
       inst[mi].setMatrixAt(inst[mi].count++, M);
     }
-    const baleGeo = new THREE.CylinderGeometry(0.75, 0.75, 1.2, 12); baleGeo.rotateZ(Math.PI / 2);
-    const baleMesh = new THREE.InstancedMesh(baleGeo, toonMat('#e3c56a'), Math.max(1, bales.length)); baleMesh.castShadow = true; baleMesh.receiveShadow = true;
+    const baleGeo = fardo(0.75, 1.2); baleGeo.rotateZ(Math.PI / 2);
+    const baleMesh = new THREE.InstancedMesh(baleGeo, toonMat('#e3c56a', { vertexColors: true }), Math.max(1, bales.length)); baleMesh.castShadow = true; baleMesh.receiveShadow = true;
     bales.forEach((b, i) => { M.makeRotationY(b.rot).setPosition(b.x, t.heightAt(b.x, b.z) + 0.72, b.z); baleMesh.setMatrixAt(i, M); });
     this.add(baleMesh);
     const stakeMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.06, 0.06, 1.0, 6), toonMat('#f5f1e8'), t.stakes.length);
@@ -244,13 +255,6 @@ export class World {
   // ---------- Árboles y álamos ----------
   buildTrees() {
     const t = this.track, rnd = mulberry32(77), sc = t.def.scenery;
-    const trunkGeo = new THREE.CylinderGeometry(0.22, 0.32, 2.2, 6); trunkGeo.translate(0, 1.1, 0);
-    const crownGeo = new THREE.IcosahedronGeometry(2.2, 1); crownGeo.translate(0, 3.4, 0);
-    const poplarGeo = new THREE.ConeGeometry(1.4, 9, 7); poplarGeo.translate(0, 5.5, 0);
-    const bushGeo = new THREE.IcosahedronGeometry(1.0, 1); bushGeo.translate(0, 0.7, 0);
-    // pino de tres pisos y ombú de copa ancha
-    const pineGeo = mergeGeometries([new THREE.ConeGeometry(2.2, 3.2, 7).translate(0, 3.2, 0), new THREE.ConeGeometry(1.7, 2.8, 7).translate(0, 5.0, 0), new THREE.ConeGeometry(1.1, 2.2, 7).translate(0, 6.6, 0)]);
-    const ombuGeo = new THREE.IcosahedronGeometry(3.2, 1); ombuGeo.scale(1.35, 0.6, 1.35); ombuGeo.translate(0, 3.6, 0);
     const bosque = t.def.paisaje === 'bosque';
     const greens = bosque
       ? (this.wet ? ['#2f5426', '#3a6330', '#254a20', '#436e33'] : ['#37622c', '#426f34', '#2b5124', '#4c7a3a'])
@@ -302,28 +306,54 @@ export class World {
     }
     const sw = t.sampleAtFrac(sc.willow);
     const swx = sw.x + sw.nx * (t.W + 6), swz = sw.z + sw.nz * (t.W + 6);
-    const willow = new THREE.Group();
-    const wt = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.7, 3.5, 7), toonMat('#7a5a3a')); wt.position.y = 1.7; willow.add(wt);
-    for (let i = 0; i < 6; i++) { const m = new THREE.Mesh(new THREE.SphereGeometry(2.6 + rnd(), 8, 6), toonMat('#8fb85a')); m.position.set(Math.cos(i) * 2.2, 4.5 + rnd(), Math.sin(i) * 2.2); m.scale.y = 1.4; willow.add(m); }
-    willow.position.set(swx, t.heightAt(swx, swz), swz); willow.traverse(o => { o.castShadow = true; }); this.add(willow);
+    const willow = new THREE.InstancedMesh(ESPECIES.sauce(true, 61), materialVegetacion(toonMat), 1);
+    willow.setMatrixAt(0, new THREE.Matrix4().makeRotationY(rnd() * 6).setPosition(swx, t.heightAt(swx, swz) - 0.05, swz));
+    willow.setColorAt(0, new THREE.Color(this.wet ? '#7aa04c' : '#9cc45f')); willow.instanceColor.needsUpdate = true;
+    willow.castShadow = willow.receiveShadow = true; willow.computeBoundingSphere(); this.add(willow);
     t.addBarrier({ x: swx, z: swz, r: 0.9, type: 'tree' });
 
-    const M = new THREE.Matrix4(), col = new THREE.Color();
-    const place = (geo, list, mat, colored) => {
-      const im = new THREE.InstancedMesh(geo, mat, Math.max(1, list.length)); im.castShadow = true; im.receiveShadow = true;
-      list.forEach((o, i) => { M.makeRotationY(o.rot); M.scale(new THREE.Vector3(o.s, o.s, o.s)); M.setPosition(o.x, o.h, o.z); im.setMatrixAt(i, M); if (colored) im.setColorAt(i, col.set(greens[o.c])); });
-      if (im.instanceColor) im.instanceColor.needsUpdate = true;
-      this.add(im); return im;
+    // Cada especie en dos niveles: lo que se ve desde la pista con todo el detalle y sombra, y el fondo con
+    // menos bultos y sin sombra. Los cercanos de copa y pino tienen dos formas.
+    // Los cercanos van en parcelas de 70 m, cada una con su esfera envolvente: así three descarta las que
+    // quedan fuera de cámara, y el mapa de sombras (que cubre unos 40 m alrededor del auto) sólo dibuja las
+    // que caen adentro. Con un solo InstancedMesh por especie, todo el bosque entraba en cada pasada.
+    const M = new THREE.Matrix4(), col = new THREE.Color(), esc = new THREE.Vector3();
+    const mat = materialVegetacion(toonMat);
+    const CERCA = t.W + 55;
+    const especie = (nombre, lista, semilla, formas = 1) => {
+      const cerca = [], lejos = [];
+      for (const o of lista) (t.nearest(o.x, o.z).dist < CERCA ? cerca : lejos).push(o);
+      const grupos = [];
+      for (let f = 0; f < formas; f++) grupos.push([cerca.filter((_, i) => i % formas === f), true, semilla + f * 101]);
+      grupos.push([lejos, false, semilla]);
+      for (const [grupo, det, sem] of grupos) {
+        if (!grupo.length) continue;
+        const geo = ESPECIES[nombre](det, sem);
+        const parcelas = new Map();
+        for (const o of grupo) {
+          const k = det ? Math.floor(o.x / 70) + ',' + Math.floor(o.z / 70) : 'todo';
+          if (!parcelas.has(k)) parcelas.set(k, []);
+          parcelas.get(k).push(o);
+        }
+        for (const lote of parcelas.values()) {
+          const im = new THREE.InstancedMesh(geo, mat, lote.length);
+          im.castShadow = det; im.receiveShadow = true;
+          lote.forEach((o, i) => {
+            const alto = 0.9 + ((o.rot * 7.13) % 1) * 0.25; // un poco más altos o más petisos
+            M.makeRotationY(o.rot); M.scale(esc.set(o.s, o.s * alto, o.s)); M.setPosition(o.x, o.h - 0.05, o.z);
+            im.setMatrixAt(i, M); im.setColorAt(i, col.set(greens[o.c]));
+          });
+          im.instanceColor.needsUpdate = true;
+          im.computeBoundingSphere();
+          this.add(im);
+        }
+      }
     };
-    place(trunkGeo, trees, toonMat('#7a5a3a'), false);
-    place(crownGeo, trees, toonMat('#ffffff'), true);
-    place(new THREE.CylinderGeometry(0.15, 0.2, 1.5, 5), poplars, toonMat('#6a4a2a'), false);
-    place(poplarGeo, poplars, toonMat('#ffffff'), true);
-    place(bushGeo, bushes, toonMat('#ffffff'), true);
-    place(new THREE.CylinderGeometry(0.2, 0.28, 2.0, 6).translate(0, 1, 0), pines, toonMat('#5a3d28'), false);
-    place(pineGeo, pines, toonMat('#ffffff'), true);
-    place(new THREE.CylinderGeometry(0.7, 1.1, 2.6, 7).translate(0, 1.3, 0), ombus, toonMat('#6a4a32'), false);
-    place(ombuGeo, ombus, toonMat('#ffffff'), true);
+    especie('copa', trees, 11, 2);
+    especie('alamo', poplars, 21);
+    especie('arbusto', bushes, 31);
+    especie('pino', pines, 41, 2);
+    especie('ombu', ombus, 51);
     for (const o of pines) if (t.nearest(o.x, o.z).dist < t.W + 30) t.addBarrier({ x: o.x, z: o.z, r: 0.3 * o.s + 0.1, type: 'tree' });
     for (const o of ombus) t.addBarrier({ x: o.x, z: o.z, r: 1.0 * o.s, type: 'tree' });
     for (const o of trees) if (t.nearest(o.x, o.z).dist < t.W + 30) t.addBarrier({ x: o.x, z: o.z, r: 0.35 * o.s + 0.1, type: 'tree' });
@@ -680,7 +710,7 @@ const MIST = { morning: 0.5, fog: 0.85, dusk: 0.4, storm: 0.35, sunset: 0.3, noo
 World.prototype.buildCountryside = function () {
   // Rollos de pasto, camionetas de los hinchas detrás de la tribuna y una parrilla con su humo.
   const t = this.track, rnd = mulberry32(23), sc = t.def.scenery, W = t.W;
-  const rollGeo = new THREE.CylinderGeometry(0.85, 0.85, 1.5, 12); rollGeo.rotateZ(Math.PI / 2);
+  const rollGeo = fardo(0.85, 1.5); rollGeo.rotateZ(Math.PI / 2);
   const rolls = [];
   for (let k = 0; k < 400 && rolls.length < 14; k++) {
     const s = t.samples[Math.floor(rnd() * t.n)], side = rnd() < 0.5 ? -1 : 1, lat = side * (W + 17 + rnd() * 30);
@@ -690,7 +720,7 @@ World.prototype.buildCountryside = function () {
     t.addBarrier({ x, z, r: 1.0, type: 'roll' });
   }
   if (rolls.length) {
-    const rm = new THREE.InstancedMesh(rollGeo, toonMat('#d9c27a'), rolls.length); rm.castShadow = rm.receiveShadow = true;
+    const rm = new THREE.InstancedMesh(rollGeo, toonMat('#d9c27a', { vertexColors: true }), rolls.length); rm.castShadow = rm.receiveShadow = true;
     rolls.forEach((r, i) => { M4.makeRotationY(r.rot).setPosition(r.x, t.heightAt(r.x, r.z) + 0.8, r.z); rm.setMatrixAt(i, M4); });
     this.add(rm);
   }

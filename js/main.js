@@ -86,6 +86,7 @@ async function init() {
   app.debris = new Debris(scene, null);
   app.audio = new GameAudio(); app.audio.setEngineProfile(app.settings.engine || 'preparado');
   app.audio.volume = app.settings.volume; app.audio.musicOn = app.settings.music;
+  if (new URLSearchParams(location.search).has('mudo')) app.audio.muted = true; // ?mudo: para probar sin sonido
   app.chase = new ChaseCamera(camera, null);
   app.mp = new Multiplayer(app); app.mp.onLobby = renderLobby; app.mp.onStart = startMultiplayerRace; app.mp.onResults = onMpResults; app.mp.onHostGone = () => {
     app.ui.toast(t('El anfitrión se desconectó: la carrera sigue sola'), 'bad', 5000);
