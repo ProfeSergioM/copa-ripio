@@ -9,6 +9,7 @@ import { GameAudio, ENGINE_PROFILES } from './audio.js';
 import { Particles, Debris } from './particles.js';
 import { ChaseCamera } from './camera.js';
 import { Imagen } from './imagen.js';
+import { Calidad } from './calidad.js';
 import { Championship, ROUNDS, POINTS, makeRoster } from './championship.js';
 import { computeStageTimes } from './stage.js';
 import { LIVERY_COLORS, KEYS } from './config.js';
@@ -22,7 +23,7 @@ const SETTINGS_KEY = 'coparipio.settings';
 
 const app = {
   state: 'loading', race: null, champ: null, tracks: {}, worldKey: null,
-  settings: { difficulty: 1, volume: 0.8, music: true, shadows: true, laps: 3, imagen: null },
+  settings: { difficulty: 1, volume: 0.8, music: true, shadows: true, laps: 3, imagen: null, resAuto: true },
   playerSpec: { name: 'Vos', number: 7, color: '#8fd3e8', roofColor: '#f2e6c9', accessory: 'none', stripes: true },
   keys: new Set(), input: { steer: 0, throttle: 0, brake: 0, handbrake: false }, steerRaw: 0, lookBack: false,
   touch: { left: false, right: false, gas: false, brake: false, hb: false }, isTouch: window.matchMedia && window.matchMedia('(pointer: coarse)').matches,
@@ -70,7 +71,7 @@ async function init() {
   ui.showScreen('loading');
   const canvas = $('gl');
   const renderer = app.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, app.isTouch ? 1.3 : 2)); // en el celular, menos píxeles: más cuadros
+  renderer.setPixelRatio(pixelBase());
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = app.settings.shadows; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -80,9 +81,9 @@ async function init() {
   // brillo de luces: prendido de entrada en compu, apagado en el celular (cuesta cuadros)
   if (app.settings.imagen == null) app.settings.imagen = !app.isTouch;
   app.imagen = new Imagen(renderer, scene, camera); app.imagen.activar(app.settings.imagen);
-  window.addEventListener('resize', () => { renderer.setSize(window.innerWidth, window.innerHeight); camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); app.imagen.ajustarTam(); });
+  window.addEventListener('resize', () => { renderer.setPixelRatio(pixelBase() * calidad.escala); renderer.setSize(window.innerWidth, window.innerHeight); camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); app.imagen.ajustarTam(); ajustarParticulas(); });
 
-  app.particles = new Particles(scene, 2500);
+  app.particles = new Particles(scene, 2500); ajustarParticulas();
   app.debris = new Debris(scene, null);
   app.audio = new GameAudio(); app.audio.setEngineProfile(app.settings.engine || 'preparado');
   app.audio.volume = app.settings.volume; app.audio.musicOn = app.settings.music;
@@ -156,6 +157,7 @@ async function startRace(quick = false) {
   app.race = new Race({ scene: app.scene, track: app.track, world: app.world, audio: app.audio, particles: app.particles, debris: app.debris, ui: app.ui, settings: app.settings, roster: champ.roster, round, gridOrder: champ.gridOrder(), chase: app.chase, champ, stageTimes });
   app.race.onComplete = onRaceComplete;
   app.chase.init = false; app.chase.mode = 0;
+  await precalentar();
   app.ui.showScreen(null); app.ui.showHUD(true); showTouch(true);
   app.state = 'race';
   app.audio.init();
@@ -246,6 +248,7 @@ async function startMultiplayerRace(payload) {
   app.race.onComplete = onRaceComplete;
   mp.attach(app.race);
   app.chase.init = false; app.chase.mode = 0;
+  await precalentar();
   app.ui.showScreen(null); app.ui.showHUD(true); showTouch(true);
   app.state = 'race';
   app.audio.init();
@@ -375,10 +378,10 @@ function bindUI() {
   $('in-engine').onchange = (e) => { app.settings.engine = e.target.value; app.audio.setEngineProfile(app.settings.engine); $('engine-desc').textContent = t(ENGINE_PROFILES[app.settings.engine].desc); saveSettings(); };
   $('btn-engine-test').onclick = () => { app.audio.init(); app.audio.setEngineProfile(app.settings.engine || 'preparado'); app.audio.previewEngine(); };
   $('in-idioma').onchange = (e) => { app.settings.idioma = e.target.value; aplicarIdioma(app.settings.idioma); fillEngine(); saveSettings(); if (app.champ) ui.renderNextRound(app.champ, ROUNDS); };
-  $('btn-settings').onclick = () => { $('in-idioma').value = idiomaActual(); fillEngine(); $('in-difficulty').value = String(app.settings.difficulty); $('in-volume').value = app.settings.volume; $('in-music').checked = app.settings.music; $('in-shadows').checked = app.settings.shadows; $('in-imagen').checked = app.settings.imagen; $('in-laps').value = app.settings.laps; ui.showScreen('settings'); };
+  $('btn-settings').onclick = () => { $('in-idioma').value = idiomaActual(); fillEngine(); $('in-difficulty').value = String(app.settings.difficulty); $('in-volume').value = app.settings.volume; $('in-music').checked = app.settings.music; $('in-shadows').checked = app.settings.shadows; $('in-imagen').checked = app.settings.imagen; $('in-resauto').checked = app.settings.resAuto !== false; $('in-laps').value = app.settings.laps; ui.showScreen('settings'); };
   $('btn-settings-back').onclick = () => {
-    app.settings.difficulty = parseFloat($('in-difficulty').value); app.settings.volume = parseFloat($('in-volume').value); app.settings.music = $('in-music').checked; app.settings.shadows = $('in-shadows').checked; app.settings.imagen = $('in-imagen').checked; app.settings.laps = parseInt($('in-laps').value);
-    app.audio.setVolume(app.settings.volume); app.audio.musicOn = app.settings.music; app.renderer.shadowMap.enabled = app.settings.shadows; app.imagen.activar(app.settings.imagen); app.scene.traverse(o => { if (o.material) o.material.needsUpdate = true; });
+    app.settings.difficulty = parseFloat($('in-difficulty').value); app.settings.volume = parseFloat($('in-volume').value); app.settings.music = $('in-music').checked; app.settings.shadows = $('in-shadows').checked; app.settings.imagen = $('in-imagen').checked; app.settings.resAuto = $('in-resauto').checked; app.settings.laps = parseInt($('in-laps').value);
+    app.audio.setVolume(app.settings.volume); app.audio.musicOn = app.settings.music; app.renderer.shadowMap.enabled = app.settings.shadows; app.imagen.activar(app.settings.imagen); if (!app.settings.resAuto) calidad.fijar(1); app.scene.traverse(o => { if (o.material) o.material.needsUpdate = true; });
     saveSettings(); ui.showScreen('menu');
   };
   $('in-volume').oninput = (e) => app.audio.setVolume(parseFloat(e.target.value));
@@ -474,7 +477,9 @@ let frames = 0, fpsT = 0;
 function loop(now) { requestAnimationFrame(loop); tick(now); }
 app.tick = (dtMs) => tick((app.lastT || performance.now()) + dtMs);
 function tick(now) {
-  const dt = Math.min((now - (app.lastT || now)) / 1000, 0.05); app.lastT = now;
+  const real = (now - (app.lastT || now)) / 1000;
+  const dt = Math.min(real, 0.05); app.lastT = now;
+  calidad.cuadro(real, app.settings.resAuto !== false && app.state === 'race' && !document.hidden);
   const race = app.race;
   if (app.state === 'pause' || app.state === 'loading') { if (app.world) dibujar(); return; }
   if (app.state === 'photo') {
@@ -501,21 +506,46 @@ function tick(now) {
     else { const g = app.track.gridSlot(7); app.chase.orbit(dt, g.x, g.z, app.track.heightAt(g.x, g.z)); }
   }
   const cam = app.camera;
-  app.world.update(dt, cam.position.x, cam.position.z, app.particles, cam.position.y);
+  const dir = cam.getWorldDirection(_dir);
+  app.world.update(dt, cam.position.x, cam.position.z, app.particles, cam.position.y, cam.position.x + dir.x * 30, cam.position.z + dir.z * 30);
   app.particles.update(dt); app.debris.update(dt);
   if (race) {
     const p = race.player.state;
     const gs = app.world.grandstandPos;
-    const dir = cam.getWorldDirection(_dir);
-    app.audio.update(dt, p, race.cars.map(c => c.state), { x: cam.position.x, z: cam.position.z, heading: Math.atan2(dir.x, dir.z) }, { crowdDist: gs ? Math.hypot(p.x - gs.x, p.z - gs.z) : 200, rain: !!app.world.raining });
+    app.audio.update(dt, p, race.states, { x: cam.position.x, z: cam.position.z, heading: Math.atan2(dir.x, dir.z) }, { crowdDist: gs ? Math.hypot(p.x - gs.x, p.z - gs.z) : 200, rain: !!app.world.raining });
   }
   dibujar();
   frames++; fpsT += dt; if (fpsT > 2) { app.fps = frames / fpsT; frames = 0; fpsT = 0; }
 }
 const _dir = new THREE.Vector3();
+// ---------- Arranque sin tirones ----------
+// Al armar la carrera aparecen materiales nuevos (los autos) y, si cambia la hora, otra cantidad de luces:
+// three rearma los programas la primera vez que dibuja cada cosa, y de noche eso era más de un segundo de
+// pantalla congelada justo cuando empezaba la cuenta regresiva. Acá se hace con el cartel de carga puesto,
+// y se dibuja un cuadro para que también suban las texturas de lo que se ve desde la grilla.
+async function precalentar() {
+  sincronizarHora();
+  try {
+    app.imagen.precompilar();
+    const p = app.race.player.state;
+    app.chase.update(0.016, p, false); app.chase.init = false;
+    app.world.update(0, app.camera.position.x, app.camera.position.z, null, app.camera.position.y);
+    app.imagen.dibujar();
+  } catch (e) { console.warn('precalentar', e); }
+  await new Promise(r => setTimeout(r, 0));
+  app.lastT = performance.now();
+}
+
+// ---------- Resolución automática (la lógica está en calidad.js) ----------
+function pixelBase() { return Math.min(window.devicePixelRatio || 1, app.isTouch ? 1.3 : 2); } // en el celular, menos píxeles: más cuadros
+function ajustarParticulas() { if (app.particles) app.particles.setAlto(app.renderer.domElement.height); }
+const calidad = new Calidad((e) => { app.renderer.setPixelRatio(pixelBase() * e); app.imagen.ajustarTam(); ajustarParticulas(); });
+app.calidad = calidad;
+
 // Todo el dibujo pasa por acá: con el brillo de luces prendido va por el posprocesado, y el umbral se
 // acomoda solo cuando cambia la hora del día de la pista.
-function dibujar() {
+function dibujar() { sincronizarHora(); app.imagen.dibujar(); }
+function sincronizarHora() {
   const tod = app.world && app.world.tod;
   if (tod && tod !== app.imagen.todVisto) {
     app.imagen.todVisto = tod; app.imagen.ambiente(tod);
@@ -524,7 +554,6 @@ function dibujar() {
     const altura = Math.min(1, Math.max(0.3, tod.sun[1] * 2.2));
     app.particles.setLuz(tod.night ? 0.3 : Math.min(1.05, Math.max(0.45, tod.sunI * 0.35 * altura + tod.hemiI * 0.55)));
   }
-  app.imagen.dibujar();
 }
 
 init().catch(e => { console.error(e); const p = document.querySelector('#loading p'); if (p) p.textContent = t('Error al cargar: ') + e.message; });

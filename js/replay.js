@@ -5,7 +5,7 @@ export const REPLAY_RATE = 20;
 export const STRIDE = 8; // x, y, z, rumbo, cabeceo, rolido, giro ruedas, ángulo ruedas
 
 export class Replay {
-  constructor(nCars) { this.n = nCars; this.frames = []; this.times = []; this.events = []; this.acc = 1; }
+  constructor(nCars) { this.n = nCars; this.frames = []; this.times = []; this.events = []; this.acc = 1 / REPLAY_RATE; } // el primer cuadro se graba enseguida
   record(dt, cars, time) {
     this.acc += dt;
     if (this.acc < 1 / REPLAY_RATE) return;

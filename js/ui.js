@@ -147,8 +147,8 @@ export class UI {
   split(k, time, delta) {
     const el = $('hud-split');
     const sign = delta == null ? '' : delta < 0 ? '−' : '+';
-    const dtxt = delta == null ? 'sin referencia' : `${sign}${Math.abs(delta).toFixed(2)}`;
-    el.innerHTML = `<span class="sk">${k === 3 ? 'VUELTA' : 'S' + k}</span> <span class="st">${formatTime(time)}</span> <span class="sd">${dtxt}</span>`;
+    const dtxt = delta == null ? t('sin referencia') : `${sign}${Math.abs(delta).toFixed(2)}`;
+    el.innerHTML = `<span class="sk">${k === 3 ? t('VUELTA') : 'S' + k}</span> <span class="st">${formatTime(time)}</span> <span class="sd">${dtxt}</span>`;
     el.className = 'hud-box split ' + (delta == null ? '' : delta < 0 ? 'good' : 'bad');
     el.style.animation = 'none'; void el.offsetWidth; el.style.animation = '';
     clearTimeout(this.splitTimer); this.splitTimer = setTimeout(() => el.classList.add('hidden'), 3200);

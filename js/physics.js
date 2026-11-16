@@ -330,8 +330,4 @@ export function applyDamage(c, zone, amount) {
   c.totalDamage = (c.damage.front + c.damage.rear + c.damage.left + c.damage.right) / 4;
 }
 
-export function repairCar(c) {
-  c.damage.front = c.damage.rear = c.damage.left = c.damage.right = 0; c.totalDamage = 0; c.engineHealth = 1;
-}
-
 export const SURF = SURFACES;

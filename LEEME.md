@@ -241,6 +241,51 @@ el aspecto:
 Medido a 1280×720 con 20 autos: de 2587 a unas 520 llamadas y de 28,7 a 15,8 ms por cuadro. La lógica
 (física, IA, audio) cuesta 1 ms, así que el resto era todo dibujo.
 
+### Segunda pasada
+
+Medido con `herramientas/perfil.js` en una notebook con placa integrada Intel UHD:
+
+- **Mapa de sombras de 2048** en vez de 3072 (1024 en el celular). Lo caro es rellenar el mapa, no filtrarlo:
+  a 1920×1080 el cuadro bajó de 16,9 a 14,3 ms. Sigue cubriendo 84 m, a 4 cm por punto.
+- **Reflectores con cuatro luces** que se mudan a los postes más cercanos (`actualizarReflectores` en
+  `js/world.js`). Con una luz por poste eran catorce en Polvaredas, y cada luz se calcula en todos los
+  píxeles: la carrera nocturna tardaba el doble que la de día (a 1280×720, 29 ms con catorce luces, 16 con
+  cuatro y 14 sin ninguna). Los demás postes siguen con la lámpara encendida y el haz.
+- **Un solo faro** para el auto del jugador en vez de dos conos pegados.
+- **Autos con menos mallas**: cada rueda es una sola (la goma, la llanta, la banda blanca y la taza van
+  fusionadas con el color en los vértices), los cuatro guardabarros son una, y paragolpes y accesorios se
+  fusionan por material. Las molduras ya no entran en la pasada de sombras. Por auto: de 58–65 mallas a
+  39–42 de cerca, de 30–37 a 19–22 de lejos y de 18–25 a 8–11 con sombra, con los mismos triángulos. Con
+  veinte autos son unas 600 llamadas menos por cuadro.
+- **Arranque sin tirones** (`precalentar` en `js/main.js`): los programas de la carrera se arman con el cartel
+  de carga puesto. Antes el primer cuadro de una carrera nocturna tardaba más de un segundo.
+- **Resolución automática** (`js/calidad.js`, se puede apagar en Ajustes): si el promedio baja de 45 cuadros
+  por segundo se achica la resolución interna de a 13 %, hasta el 60 %, y vuelve a subir cuando sobra.
+
+Con la notebook a batería y en el plan de energía silencioso el procesador rinde entre tres y cinco veces
+menos, y ahí lo que pesa es la cantidad de llamadas de dibujo (unos 40 µs cada una, contra 3 enchufada).
+Por eso valen las dos cosas: menos llamadas y menos píxeles.
+
+## Pruebas
+
+```bash
+npm test                       # todo: 127 comprobaciones, minuto y medio
+node pruebas/todos.mjs rival   # sólo los grupos cuyo nombre contenga "rival"
+```
+
+`pruebas/todos.mjs` corre sin navegador con las mismas piezas del juego: la física, la largada, veinte
+rivales en cada pista y sentido (que den sus vueltas, no se vayan al pasto y no queden trabados), el tramo
+del cerro, una carrera completa con el gestor del juego (grilla, vueltas, llegada, resultados, repetición,
+récord), la contrarreloj, el campeonato (puntos, plata, taller, guardar y cargar), la repetición, la
+resolución automática, el modelo del auto (cuántas mallas), las pistas, que todo texto tenga traducción y
+que el HTML tenga cada elemento que el código busca.
+
+Lo que encontró al escribirlo: los rivales mezclaban el rumbo del auto y el de la velocidad con una
+interpolación común, y en los tramos que apuntan al sur (donde el ángulo salta de 180° a −180°) el
+resultado apuntaba para atrás: volanteaban a tope y terminaban en la zanja. En Polvaredas eran 1,5 s
+fuera de pista por vuelta y tres reposiciones por carrera; ahora, cero. También había avisos y burlas del
+rival que salían en español con el juego en inglés.
+
 ## Memoria
 
 `World.dispose()` y `Race.dispose()` liberan geometrías, materiales y texturas propias. Los materiales de
@@ -356,6 +401,8 @@ node herramientas/largada.mjs                # cuánto se gana o pierde según e
 ```
 
 En el navegador, `?auto` hace que el auto del jugador maneje solo y `?mudo` silencia el juego.
+`herramientas/perfil.js` se carga desde la consola de la página y mide cuánto tarda la lógica y cuánto el
+dibujo, con cuántas llamadas y triángulos (las instrucciones están al principio del archivo).
 
 Sirven para calibrar física e IA con números antes de tocar el juego.
 

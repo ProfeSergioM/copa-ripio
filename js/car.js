@@ -45,9 +45,10 @@ const parkMat = toonMat('#fff2d0', { emissive: '#8a7a40', emissiveIntensity: 0.3
 const reflMat = toonMat('#b02020');
 const badgeMat = toonMat('#c8342a');
 const seamMat = toonMat('#1d130c');
+const ruedaMat = toonMat('#ffffff', { vertexColors: true }); // la rueda entera: cada parte lleva su color en los vértices
 // Materiales de modulo: los comparten todos los autos y todas las carreras, no hay que liberarlos
 for (const m of [chromeMat, tireMat, hubMat, glassMat, darkMat, lightOn, lensMat, lightBroken, tailOff, tailOn, tailNight,
-                 outline, woodMat, whitewallMat, blinkMat, parkMat, reflMat, badgeMat, seamMat, ...suitcaseMats]) m.userData.compartido = true;
+                 outline, woodMat, whitewallMat, blinkMat, parkMat, reflMat, badgeMat, seamMat, ruedaMat, ...suitcaseMats]) m.userData.compartido = true;
 
 function roundedRect(w, h, r) {
   const sh = new THREE.Shape(); const x = -w / 2, y = -h / 2;
@@ -216,6 +217,7 @@ export function disposeCarVisual(cv) {
 // numeros, detalles). Baja de ~144 mallas por auto a ~25, que es lo que decide el costo de dibujar 20 autos.
 // Quedan aparte: la carroceria (se abolla), las ruedas (giran), las luces (cambian de material) y las piezas
 // que se desprenden con los golpes.
+const SIN_PROTEGER = new Set();
 function matrizRelativa(obj, tope) {
   const cadena = [];
   for (let p = obj; p && p !== tope; p = p.parent) cadena.push(p);
@@ -229,7 +231,7 @@ function fusionable(m) {
     && g.attributes.position && g.attributes.normal && g.attributes.uv;
 }
 // Fusiona las piezas fijas de un contenedor (vis o un grupo) en una malla por material. Devuelve las creadas.
-function fusionarEn(cont, protegidos) {
+function fusionarEn(cont, protegidos, conSombra = false) {
   const porMaterial = new Map();
   const quitar = [];
   const creadas = [];
@@ -245,7 +247,7 @@ function fusionarEn(cont, protegidos) {
     if (!apto || !piezas.length) continue;
     // grupo con alguna pieza que no se puede fusionar (barro): se fusiona por dentro y el grupo queda
     if (!piezas.every(fusionable)) {
-      if (hijo.isGroup && piezas.some(fusionable)) creadas.push(...fusionarEn(hijo, protegidos));
+      if (hijo.isGroup && piezas.some(fusionable)) creadas.push(...fusionarEn(hijo, protegidos, conSombra));
       continue;
     }
     for (const m of piezas) {
@@ -267,10 +269,29 @@ function fusionarEn(cont, protegidos) {
     if (!g) { for (const gg of e.geos) gg.dispose(); continue; }
     if (g !== e.geos[0]) for (const gg of e.geos) gg.dispose();
     const malla = new THREE.Mesh(g, mat);
-    malla.castShadow = e.sombra; malla.receiveShadow = false;
+    // Sin sombra propia: son molduras, costuras y vidrios pegados al casco, que ya proyecta la suya. Cada
+    // una era una llamada más por auto en la pasada de sombras.
+    malla.castShadow = conSombra && e.sombra; malla.receiveShadow = false;
     cont.add(malla); creadas.push(malla);
   }
   return creadas;
+}
+
+// Una rueda completa en una geometría, mirando hacia el lado que se pida (1 izquierda, -1 derecha)
+function pintar(g, hex) {
+  const c = new THREE.Color(hex), n = g.attributes.position.count, a = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; }
+  g.setAttribute('color', new THREE.BufferAttribute(a, 3)); return g;
+}
+function geometriaRueda(lado, colorAuto, banda) {
+  const partes = [];
+  const goma = new THREE.CylinderGeometry(0.29, 0.29, 0.19, 16); goma.rotateZ(Math.PI / 2); partes.push(pintar(goma, '#2a2a2e'));
+  const llanta = new THREE.CylinderGeometry(0.19, 0.19, 0.03, 14); llanta.rotateZ(Math.PI / 2); llanta.translate(lado * 0.095, 0, 0); partes.push(pintar(llanta, colorAuto));
+  if (banda) { const b = new THREE.TorusGeometry(0.235, 0.028, 6, 18); b.rotateY(Math.PI / 2); b.translate(lado * 0.1, 0, 0); partes.push(pintar(b, '#f3eee2')); }
+  const taza = new THREE.SphereGeometry(0.12, 12, 10); taza.scale(0.35, 1, 1); taza.translate(lado * 0.11, 0, 0); partes.push(pintar(taza, '#e8eef2'));
+  const g = mergeGeometries(partes, false);
+  for (const x of partes) x.dispose();
+  return g;
 }
 
 export function createCarVisual(spec) {
@@ -363,9 +384,18 @@ export function createCarVisual(spec) {
   // guardabarros abultados alrededor de las ruedas (color carrocería)
   const fenderMat = dirtify(toonMat(spec.color), dirt);
   const FX = L.fenderX || 0.7, FK = L.fenderK || 1;
-  for (const [fx, fz] of [[FX, 1.0], [-FX, 1.0], [FX, -1.0], [-FX, -1.0]]) {
-    const f = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), fenderMat); if (fz > 0) f.scale.set(0.05 * FK, 0.24, 0.44); else f.scale.set(0.1 * FK, 0.28, 0.48); f.position.set(fx, 0.6, fz); f.castShadow = true; vis.add(f); // adelante casi plano, atrás un bulto discreto
-    const fo = new THREE.Mesh(f.geometry, outline); fo.position.copy(f.position); fo.scale.copy(f.scale); vis.add(fo);
+  // Los cuatro van en una sola malla (y su contorno en otra): eran ocho llamadas de dibujo por auto, más
+  // cuatro en la pasada de sombras, para cuatro bultos que nunca se mueven por separado.
+  {
+    const bultos = [];
+    for (const [fx, fz] of [[FX, 1.0], [-FX, 1.0], [FX, -1.0], [-FX, -1.0]]) {
+      const g = new THREE.SphereGeometry(1, 12, 8);
+      if (fz > 0) g.scale(0.05 * FK, 0.24, 0.44); else g.scale(0.1 * FK, 0.28, 0.48); // adelante casi plano, atrás un bulto discreto
+      g.translate(fx, 0.6, fz); bultos.push(g);
+    }
+    const gf = mergeGeometries(bultos, false); for (const g of bultos) g.dispose();
+    const f = new THREE.Mesh(gf, fenderMat); f.castShadow = true; vis.add(f);
+    vis.add(new THREE.Mesh(gf, outline));
   }
   // faros redondos sobre los guardabarros
   const headlights = [], taillights = [];
@@ -414,7 +444,7 @@ export function createCarVisual(spec) {
   const pipeEnd = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.02, 8), darkMat); pipeEnd.rotation.x = Math.PI / 2; pipeEnd.position.set(-0.42, 0.38, L.bumperR - 0.05); vis.add(pipeEnd);
   // paragolpes con defensas (desprendibles)
   const bumperGeo = new THREE.CylinderGeometry(0.045, 0.045, 1.3, 8);
-  const mkBumper = (z) => { const g = new THREE.Group(); const b = new THREE.Mesh(bumperGeo, chromeMat); b.rotation.z = Math.PI / 2; g.add(b); for (const sx of [-0.42, 0.42]) { const o = box(0.07, 0.16, 0.08, chromeMat); o.position.set(sx, 0, 0); g.add(o); } g.position.set(0, 0.42, z); return g; };
+  const mkBumper = (z) => { const g = new THREE.Group(); const b = new THREE.Mesh(bumperGeo, chromeMat); b.rotation.z = Math.PI / 2; g.add(b); for (const sx of [-0.42, 0.42]) { const o = box(0.07, 0.16, 0.08, chromeMat); o.position.set(sx, 0, 0); g.add(o); } fusionarEn(g, SIN_PROTEGER); g.position.set(0, 0.42, z); return g; };
   addPart(mkBumper(L.bumperF), 'front', 0.55);
   addPart(mkBumper(L.bumperR), 'rear', 0.55);
   // espejo
@@ -442,17 +472,17 @@ export function createCarVisual(spec) {
     for (let i = 0; i < 4; i++) { const leg = box(0.04, 0.1, 0.04, chromeMat); leg.position.set((i % 2 ? 0.5 : -0.5), 0.02, (i < 2 ? 0.4 : -0.4)); rack.add(leg); }
     const s1 = box(0.7, 0.22, 0.5, suitcaseMats[Math.floor(rnd() * 4)]); s1.position.set(-0.15, 0.2, 0); rack.add(s1);
     const s2 = box(0.45, 0.16, 0.36, suitcaseMats[Math.floor(rnd() * 4)]); s2.position.set(0.3, 0.17, 0.05); s2.rotation.y = 0.3; rack.add(s2);
-    rack.position.set(0, 1.64, -0.28); addPart(rack, 'any', 0.5);
+    fusionarEn(rack, SIN_PROTEGER, true); rack.position.set(0, 1.64, -0.28); addPart(rack, 'any', 0.5);
   } else if (spec.accessory === 'lights') {
     const bar = new THREE.Group();
     bar.add(box(1.0, 0.05, 0.05, darkMat));
     for (let i = 0; i < 4; i++) { const l = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.07, 0.1, 10), lightOn); l.rotation.x = Math.PI / 2; l.position.set(-0.36 + i * 0.24, 0.1, 0.03); bar.add(l); }
-    bar.position.set(0, 0.56, L.bumperF + 0.05); addPart(bar, 'front', 0.4); // debajo del escudo, sobre el paragolpes
+    fusionarEn(bar, SIN_PROTEGER); bar.position.set(0, 0.56, L.bumperF + 0.05); addPart(bar, 'front', 0.4); // debajo del escudo, sobre el paragolpes
   } else if (spec.accessory === 'spoiler') {
     const sp = new THREE.Group();
     const plank = box(1.2, 0.05, 0.3, woodMat); plank.position.y = 0.2; sp.add(plank);
     for (const sx of [-0.45, 0.45]) { const l = box(0.05, 0.2, 0.05, darkMat); l.position.set(sx, 0.1, 0); sp.add(l); }
-    sp.position.set(0, L.lid.y + 0.24, L.lid.z + 0.07); addPart(sp, 'rear', 0.45);
+    fusionarEn(sp, SIN_PROTEGER, true); sp.position.set(0, L.lid.y + 0.24, L.lid.z + 0.07); addPart(sp, 'rear', 0.45);
   } else if (spec.accessory === 'antenna') {
     const ant = new THREE.Group();
     const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1.4, 6), chromeMat); rod.position.y = 0.7; ant.add(rod);
@@ -460,21 +490,19 @@ export function createCarVisual(spec) {
     ant.position.set(-0.55, 0.9, L.lid.z + 0.14); vis.add(ant);
   }
 
-  // ruedas chicas con tazas grandes
+  // Ruedas chicas con tazas grandes. Cada rueda es una sola malla: la goma, la llanta del color del auto, la
+  // banda blanca y la taza cromada van fusionadas, con el color de cada parte en los vértices. Antes eran
+  // cuatro mallas por rueda: dieciséis llamadas de dibujo por auto, 320 con la grilla completa. Sólo el
+  // contorno queda aparte, y es lo único que se apaga de lejos.
   const wheels = [], adornos = [];
-  const wheelGeo = new THREE.CylinderGeometry(0.29, 0.29, 0.19, 16);
-  const rimGeo = new THREE.CylinderGeometry(0.19, 0.19, 0.03, 14);
-  const wwGeo = new THREE.TorusGeometry(0.235, 0.028, 6, 18);
-  const rimMat = dirtify(toonMat(spec.color), dirt);
+  const wheelGeo = new THREE.CylinderGeometry(0.29, 0.29, 0.19, 16); wheelGeo.rotateZ(Math.PI / 2);
+  const ruedaGeo = [1, -1].map((lado) => geometriaRueda(lado, spec.color, spec.whitewall !== false));
   const WX = L.wheelX;
   for (const [x, z, steer] of [[WX, 1.0, true], [-WX, 1.0, true], [WX, -1.0, false], [-WX, -1.0, false]]) {
     const w = new THREE.Group(); w.position.set(x, 0.29, z);
-    const tire = new THREE.Mesh(wheelGeo, tireMat); tire.rotation.z = Math.PI / 2; tire.castShadow = true;
-    const spin = new THREE.Group(); spin.add(tire);
-    const rim = new THREE.Mesh(rimGeo, rimMat); rim.rotation.z = Math.PI / 2; rim.position.x = Math.sign(x) * 0.095; spin.add(rim);
-    if (spec.whitewall !== false) { const ww = new THREE.Mesh(wwGeo, whitewallMat); ww.rotation.y = Math.PI / 2; ww.position.x = Math.sign(x) * 0.1; spin.add(ww); adornos.push(ww); }
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), chromeMat); dome.scale.set(0.35, 1, 1); dome.position.x = Math.sign(x) * 0.11; spin.add(dome); adornos.push(dome);
-    const ol = new THREE.Mesh(wheelGeo, outline); ol.rotation.z = Math.PI / 2; spin.add(ol); adornos.push(ol);
+    const spin = new THREE.Group();
+    const rueda = new THREE.Mesh(ruedaGeo[x > 0 ? 0 : 1], ruedaMat); rueda.castShadow = true; spin.add(rueda);
+    const ol = new THREE.Mesh(wheelGeo, outline); spin.add(ol); adornos.push(ol);
     w.add(spin); vis.add(w);
     wheels.push({ group: w, spin, steer, side: Math.sign(x) });
   }
@@ -553,17 +581,6 @@ export function detachParts(cv, damage) {
     }
   }
   return out;
-}
-
-export function restoreCar(cv) {
-  cv.geo.attributes.position.array.set(cv.orig);
-  cv.geo.attributes.position.needsUpdate = true;
-  cv.colorAttr.array.set(cv.origCol); cv.colorAttr.needsUpdate = true;
-  cv.geo.computeVertexNormals();
-  cv.deformTotal = 0;
-  for (const p of cv.parts) if (!p.attached) { p.attached = true; cv.vis.add(p.mesh); }
-  for (const hl of cv.headlights) hl.material = lightOn;
-  cv.dirt.value = 0;
 }
 
 export function setBrakeLights(cv, on) {

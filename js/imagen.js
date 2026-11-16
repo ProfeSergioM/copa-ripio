@@ -105,6 +105,17 @@ export class Imagen {
     this.pendiente = AMBIENTES[clave];
   }
 
+  // Arma los programas de todo lo que hay en la escena, no sólo lo que entra en cámara. Hay que hacerlo
+  // contra el mismo destino con el que se va a dibujar: three genera programas distintos para la pantalla
+  // (con mapeo de tonos) y para la textura intermedia del brillo (sin él).
+  precompilar() {
+    const r = this.renderer;
+    if (this.rinde && this.composer) {
+      const previo = r.getRenderTarget();
+      r.setRenderTarget(this.composer.renderTarget1); r.compile(this.scene, this.camera); r.setRenderTarget(previo);
+    } else r.compile(this.scene, this.camera);
+  }
+
   // A pleno sol el brillo casi no se nota (sólo el disco del sol y el semáforo) y cuesta 4 ms por cuadro en
   // una placa integrada: en esas carreras se dibuja directo. Donde sí cambia la imagen es al atardecer, con
   // niebla o lluvia y de noche.

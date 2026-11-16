@@ -36,6 +36,10 @@ export class Particles {
     scene.add(this.points);
   }
   setLuz(v) { this.points.material.uniforms.uLuz.value = v; }
+  // El tamaño de cada punto se da en píxeles, así que hay que acompañar el alto del lienzo: si no, al bajar
+  // la resolución el polvo se veía más grande, y en una ventana alta más chico. 400 es lo que se ajustó a ojo
+  // con un lienzo de 1080 píxeles de alto.
+  setAlto(pixeles) { this.points.material.uniforms.uScale.value = 400 * pixeles / 1080; }
   emit(x, y, z, vx, vy, vz, size, life, r, g, b, alpha = 0.5, grow = 1.5, gravity = 0.6) {
     let i;
     if (this.count < this.max) i = this.count++;

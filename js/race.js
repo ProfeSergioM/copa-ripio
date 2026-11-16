@@ -72,14 +72,17 @@ export class Race {
       }
       else if (this.champ) { state.tune = this.champ.tune(); this.applyCarriedDamage(car, this.champ.damage); }
       if (r.isPlayer && (this.world.night || this.wet || this.world.foggy)) {
-        for (const sx of [-0.48, 0.48]) {
-          const sp = new THREE.SpotLight('#ffe9b0', 45, 45, 0.55, 0.5, 1.4); // a 90 quemaba en blanco a los autos de adelante sp.position.set(sx, 0.9, 1.5);
-          const tgt = new THREE.Object3D(); tgt.position.set(sx * 1.5, 0.2, 14); vis.vis.add(tgt); sp.target = tgt; vis.vis.add(sp);
-        }
+        // Un solo haz ancho en vez de uno por faro: cada luz se calcula en todos los píxeles de la escena, y a
+        // la distancia de la cámara dos conos a un metro uno del otro se ven igual que uno. (Antes además la
+        // línea que los ubicaba había quedado dentro de un comentario y salían del piso, en el medio del auto.)
+        const sp = new THREE.SpotLight('#ffe9b0', 80, 45, 0.62, 0.5, 1.4);
+        sp.position.set(0, 0.9, 1.5);
+        const tgt = new THREE.Object3D(); tgt.position.set(0, 0.2, 14); vis.vis.add(tgt); sp.target = tgt; vis.vis.add(sp);
       }
       this.cars.push(car);
     });
     this.player = this.cars.find(c => c.isPlayer);
+    this.states = this.cars.map(c => c.state); // lo usan los pilotos y el sonido en cada cuadro
     this.rival = this.cars.find(c => c.isRival) || null;
     if (this.rival) { this.star = createRivalStar(); this.scene.add(this.star); }
     this.syncVisuals(0);
@@ -109,7 +112,9 @@ export class Race {
   taunt(kind) {
     if (!this.rival) return;
     const list = TAUNTS[kind]; if (!list) return;
-    const txt = list[Math.floor(Math.random() * list.length)].replace('{p}', this.player.name);
+    // primero se traduce y después se pone el nombre: al revés, las burlas que nombran al jugador no estaban
+    // en el diccionario y salían en español con el juego en inglés
+    const txt = list[Math.floor(Math.random() * list.length)];
     this.ui.taunt(this.rival.name, t(txt).replace('{p}', this.player.name));
   }
   sayTaunt(kind, cooldown) { const now = this.time; if (this.lastToast['taunt'] && now - this.lastToast['taunt'] < cooldown) return; this.lastToast['taunt'] = now; this.taunt(kind); }
@@ -136,7 +141,7 @@ export class Race {
       else if (c.isPlayer && this.mode === 'timetrial' && c.state.finished) c.input = { steer: 0, throttle: 0, brake: 1, handbrake: false };
       else {
         if (!c.ai) c.ai = new AIDriver(c.state, this.track, this.line, { skill: 0.85, aggression: 0.3, seed: 7, difficulty: 1 });
-        c.input = c.ai.update(dt, this.cars.map(x => x.state), this.raceTime, this.phase === 'idle' ? null : this.greenTime);
+        c.input = c.ai.update(dt, this.states, this.raceTime, this.phase === 'idle' ? null : this.greenTime);
       }
     }
     this.acc += Math.min(dt, 0.1);
@@ -267,7 +272,7 @@ export class Race {
         if (this.raceTime > 1) {
           s.lap++; s.lapTimes.push(s.lapTime);
           if (s.bestLap == null || s.lapTime < s.bestLap) { s.bestLap = s.lapTime; if (c.isPlayer && s.lap > 1) this.say('best', `${t('¡Mejor vuelta!')} ${formatTime(s.lapTime)}`, 'good', 0); }
-          else if (c.isPlayer) this.say('lap', `Vuelta ${formatTime(s.lapTime)}`, '', 0);
+          else if (c.isPlayer) this.say('lap', `${t('Vuelta')} ${formatTime(s.lapTime)}`, '', 0);
           if (c.isPlayer) {
             const ref = this.record ? this.record.bestLap : null;
             this.ui.split(3, s.lapTime, ref == null ? null : s.lapTime - ref);
@@ -362,7 +367,7 @@ export class Race {
   say(key, text, kind, cooldown) {
     const now = this.time;
     if (cooldown && this.lastToast[key] && now - this.lastToast[key] < cooldown) return;
-    this.lastToast[key] = now; this.ui.toast(text, kind);
+    this.lastToast[key] = now; this.ui.toast(t(text), kind);
   }
 
   playerFeedback(dt) {

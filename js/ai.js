@@ -180,7 +180,10 @@ export class AIDriver {
     if (Math.abs(c.lateral) > t.W + 3 && !this.outsideWall) { targetHeading = sm.heading - Math.sign(c.lateral) * 0.45; } // afuera: paralelo al ripio, entrando de a poco (detrás del muro de gomas, sigue el punto objetivo)
     // dirección de la velocidad (permite contravolante en derrape)
     const vHead = Math.abs(speed) > 4 ? Math.atan2(c.vx, c.vz) : c.heading;
-    const refHead = lerp(c.heading, vHead, 0.55);
+    // Mezcla de dos ángulos: hay que ir por el camino corto. Con una interpolación común, cuando el rumbo y la
+    // velocidad caían uno a cada lado del salto de 180° a -180° (cualquier tramo que apunta al sur) el resultado
+    // apuntaba para atrás, el piloto volanteaba a tope de un lado al otro y terminaba en la zanja.
+    const refHead = c.heading + wrapAngle(vHead - c.heading) * 0.55;
     // ángulo: anticipación por curvatura del camino (feed-forward) + corrección de rumbo, convertido a fracción del tope
     const curvAhead = s[t.wrap(c.trackIdx + Math.round(clamp(Math.abs(speed) * 0.35, 3, 10)))].curvS;
     const ff = Math.atan(CAR.wheelbase * curvAhead) * 1.15;

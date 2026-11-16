@@ -4,7 +4,7 @@
   "description": "Campeonato Fiat 600 en ripio",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node pruebas/todos.mjs"
   },
   "keywords": [],
   "author": "",

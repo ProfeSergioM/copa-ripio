@@ -19,6 +19,13 @@ const TOD = {
   storm:   { sun: [0.3, 0.7, 0.4], sunCol: '#aab4c0', sunI: 0.8, hemiSky: '#7a8a98', hemiGround: '#4a4a44', hemiI: 0.7, top: '#3d4a58', horizon: '#8d98a2', fog: '#8a949c', fogNear: 90, fogFar: 330, lamps: true, night: false },
 };
 
+// Lado del mapa de sombras del sol. Con 3072 el dibujo tardaba 2,7 ms más por cuadro que con 2048 en una
+// placa integrada a 1920x1080 (medido con herramientas/perfil.js): lo caro es rellenar el mapa, no filtrarlo.
+// El mapa cubre 84 m, así que con 2048 cada punto son 4 cm de piso.
+const SOMBRA = (celular) => (celular ? 1024 : 2048);
+// Cuántas luces puntuales se reparten entre los reflectores (ver actualizarReflectores)
+const FOCOS = 4;
+
 export class World {
   constructor(scene, track, renderer) {
     this.scene = scene; this.track = track; this.renderer = renderer;
@@ -77,7 +84,7 @@ export class World {
     this.sun = new THREE.DirectionalLight('#fff1cf', 1.9);
     this.sun.castShadow = true;
     const sc = this.sun.shadow.camera; sc.left = -42; sc.right = 42; sc.top = 42; sc.bottom = -42; sc.near = 1; sc.far = 300;
-    const mobile = window.matchMedia && window.matchMedia('(pointer: coarse)').matches; this.sun.shadow.mapSize.set(mobile ? 1536 : 3072, mobile ? 1536 : 3072); this.sun.shadow.radius = 3; this.sun.shadow.bias = -0.0008; this.sun.shadow.normalBias = 0.03;
+    const mobile = window.matchMedia && window.matchMedia('(pointer: coarse)').matches; this.sun.shadow.mapSize.set(SOMBRA(mobile), SOMBRA(mobile)); this.sun.shadow.radius = 3; this.sun.shadow.bias = -0.0008; this.sun.shadow.normalBias = 0.03;
     this.sunTarget = this.add(new THREE.Object3D()); this.sun.target = this.sunTarget;
     this.add(this.sun);
     this.skyMat = new THREE.ShaderMaterial({
@@ -142,7 +149,9 @@ export class World {
     this.scene.fog.near = p.fogNear * (aire && !p.foggy ? aire.k : 1);
     this.scene.fog.far = p.fogFar * (aire && !p.foggy ? aire.k : 1);
     this.renderer.setClearColor(nieblaCol);
-    for (const l of this.lamps) { l.light.visible = p.lamps; l.bulb.material = p.lamps ? this.lampOnMat : this.lampOffMat; l.cone.visible = p.lamps; }
+    for (const l of this.lamps) { l.bulb.material = p.lamps ? this.lampOnMat : this.lampOffMat; l.cone.visible = p.lamps; }
+    this.lamparasPrendidas = !!p.lamps; this.reflectoresDeCero = true;
+    for (const f of this.focos || []) f.luz.visible = this.lamparasPrendidas;
     this.clouds.visible = !p.night;
     this.night = p.night; this.foggy = !!p.foggy;
     if (this.flare) this.flare.visible = !p.night && name !== 'storm' && !p.foggy;
@@ -236,7 +245,7 @@ export class World {
     if (!posts.length) return;
     const H = 1.35;
     const postGeo = new THREE.CylinderGeometry(0.09, 0.12, H, 6); postGeo.translate(0, H / 2, 0);
-    const postMesh = new THREE.InstancedMesh(postGeo, toonMat('#6b4a2e'), posts.length); postMesh.castShadow = true; postMesh.receiveShadow = true;
+    const postMesh = new THREE.InstancedMesh(postGeo, toonMat('#6b4a2e'), posts.length); postMesh.castShadow = false; postMesh.receiveShadow = true; // son casi dos mil y su sombra mide un píxel
     const ys = new Map();
     posts.forEach((b, i) => { const y = t.heightAt(b.x, b.z) - 0.05; ys.set(b, y); E.set(b.lean, b.idx * 0.9, b.lean * 0.7); M.makeRotationFromEuler(E).setPosition(b.x, y, b.z); postMesh.setMatrixAt(i, M); });
     this.add(postMesh);
@@ -614,13 +623,54 @@ export class World {
       const ax = s.x + s.nx * side * t.W * 0.25, az = s.z + s.nz * side * t.W * 0.25;
       const blanco = new THREE.Vector3(ax, t.heightAt(ax, az), az);
       bulb.lookAt(blanco);
-      const light = new THREE.PointLight('#ffe0a0', 60, 40, 1.6); light.position.set(x - s.nx * side * 1.5, y + 6.5, z - s.nz * side * 1.5); light.visible = false; this.add(light);
+      const luz = new THREE.Vector3(x - s.nx * side * 1.5, y + 6.5, z - s.nz * side * 1.5); // dónde alumbra este poste
       const haz = blanco.clone().sub(bulb.position), largo = haz.length();
       const coneGeo = new THREE.ConeGeometry(largo * 0.5, largo, 16, 1, true); coneGeo.translate(0, -largo / 2, 0); // punta en el origen
       const cone = new THREE.Mesh(coneGeo, coneMat); cone.position.copy(bulb.position);
       cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), haz.normalize());
       cone.visible = false; this.add(cone);
-      this.lamps.push({ light, bulb, cone });
+      this.lamps.push({ luz, bulb, cone, foco: null, d: 0 });
+    }
+  }
+
+  // Luces de verdad para los reflectores. Cada luz puntual se calcula en todos los píxeles de la escena, la
+  // alcance o no: con una por poste (catorce en Polvaredas) la carrera nocturna tardaba el doble en dibujarse
+  // que la de día. Ahora hay FOCOS luces que se van mudando a los postes más cercanos al punto que mira la
+  // cámara; los demás postes conservan la lámpara encendida y el haz, que es lo que se ve de lejos. La
+  // cantidad de luces no cambia nunca, así que three no tiene que rearmar los programas.
+  actualizarReflectores(dt, mx, mz) {
+    if (!this.lamps.length) return;
+    if (!this.focos) {
+      this.focos = [];
+      for (let i = 0; i < Math.min(FOCOS, this.lamps.length); i++) {
+        const luz = new THREE.PointLight('#ffe0a0', 0, 40, 1.6); luz.visible = !!this.lamparasPrendidas; this.add(luz);
+        this.focos.push({ luz, poste: null, nivel: 0 });
+      }
+    }
+    if (!this.lamparasPrendidas) return;
+    // los FOCOS postes más cercanos; el que ya tiene luz corre con ventaja para que no se la pasen de ida y vuelta
+    for (const l of this.lamps) { l.d = (l.luz.x - mx) ** 2 + (l.luz.z - mz) ** 2; if (l.foco) l.d *= 0.7; l.elegido = false; }
+    const orden = this._ordenPostes || (this._ordenPostes = [...this.lamps]);
+    orden.sort((a, b) => a.d - b.d);
+    for (let i = 0; i < this.focos.length; i++) orden[i].elegido = true;
+    const deCero = this.reflectoresDeCero; this.reflectoresDeCero = false;
+    if (deCero) for (const f of this.focos) { if (f.poste) f.poste.foco = null; f.poste = null; f.nivel = 0; }
+    let libre = 0;
+    for (const f of this.focos) {
+      if (f.poste && f.poste.elegido) f.nivel = Math.min(1, f.nivel + dt * 2.5);
+      else {
+        // se apaga de a poco y recién entonces se muda al poste que le toca
+        f.nivel = Math.max(0, f.nivel - dt * 2.5);
+        if (f.nivel <= 0 || !f.poste) {
+          while (libre < orden.length && (!orden[libre].elegido || orden[libre].foco)) libre++;
+          if (libre < orden.length) {
+            if (f.poste) f.poste.foco = null;
+            f.poste = orden[libre]; f.poste.foco = f; f.luz.position.copy(f.poste.luz);
+            if (deCero) f.nivel = 1;
+          }
+        }
+      }
+      f.luz.intensity = 60 * f.nivel;
     }
   }
 
@@ -688,9 +738,10 @@ export class World {
     }
   }
 
-  update(dt, focusX, focusZ, particles, camY = 0) {
+  update(dt, focusX, focusZ, particles, camY = 0, miraX = null, miraZ = null) {
     this.time += dt;
     this.updateAtmosphere(dt, focusX, focusZ, particles, camY);
+    this.actualizarReflectores(dt, miraX == null ? focusX : miraX, miraZ == null ? focusZ : miraZ);
     for (const f of this.animated) f(dt, this.time);
     for (const c of this.clouds.children) { c.position.x += (c.userData.speed + this.wind.x * 0.5) * dt; c.position.z += this.wind.z * 0.5 * dt; if (c.position.x > 800) c.position.x = -800; if (c.position.z > 800) c.position.z = -800; }
     this.sunTarget.position.set(focusX, 0, focusZ);
