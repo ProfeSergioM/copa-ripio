@@ -186,12 +186,53 @@ con lluvia y fuera del ripio; la reparación en el taller lo limpia.
 
 La velocidad permitida se planifica integrando hacia atrás 200 m de pista con el círculo de fricción:
 en cada tramo solo queda para frenar lo que no se usa para doblar, así que en curvas que se cierran
-(Curvón, Tenaza) frenan antes. El agarre que estima cada piloto es `0.76 × agarre real × (0.9 + 0.12 × habilidad)`,
+(Curvón, Tenaza) frenan antes. El agarre que estima cada piloto es `0.46 × agarre nominal × (0.9 + 0.12 × habilidad)`,
 descontando 1,5 % por cada m/s por encima de 12 m/s (a fondo, la cola tiene menos agarre lateral). La dificultad
 no infla esa estimación: la ventaja viene del "tune" real del auto (par, agarre y frenos), que la IA conoce.
 Fuera del ripio van despacio (9 m/s en la zanja) para poder salir, y un auto perdido o trabado más de
 5–6 s vuelve al borde de la pista. Se calibra con `herramientas/solo2.mjs` (un auto) y `herramientas/fuera.mjs`
 (20 autos: segundos fuera de pista por vuelta y por sector; `DIF=1.14 CIRCUITO=ovalo REVERSE=1 DIAG=1`).
+
+## La trazada de los rivales y la dificultad
+
+Los rivales eran lentos por cómo manejaban, no por el auto: darles 45 % más de motor y de agarre bajaba la
+vuelta de Polvaredas apenas un 4 %. Seguían una línea que se movía poco hacia cada lado y calculaban la
+velocidad de cada curva con el radio del eje de la pista. Tres cambios en `js/ai.js`:
+
+- **Trazada de mínima curvatura** (`buildRacingLine`): la línea que menos dobla dentro del ancho del ripio,
+  entrando abierta y saliendo abierta. La velocidad de curva sale de la curvatura de esa línea; si el auto
+  anda corrido de ella (pasando a otro, en el pelotón de la largada) vuelve de a poco a la del eje.
+- **Volante más suave a alta velocidad**: la corrección de rumbo se afloja con la velocidad. Con la misma
+  mano a 100 km/h, el volante iba de tope a tope y la cola se soltaba en la entrada de las curvas rápidas.
+- **Nivel Tranqui**: por debajo de la dificultad normal además entran más despacio a las curvas.
+
+Un rival solo con el auto de fábrica bajó en Polvaredas de 65 a 57 s. `herramientas/potencial.mjs` calcula
+lo que permite el auto (agarre real, motor y frenada): 52 s por la trazada, 56 por el eje. En el óvalo el
+límite es 35–36 s, y por eso ahí siguen con mejor auto (`aiBoost` bajó de 1,40 a 1,30).
+
+Mejor vuelta y promedio de las mejores vueltas con veinte autos (`herramientas/fuera.mjs`):
+
+| nivel | Polvaredas | Óvalo |
+|---|---|---|
+| Tranqui | 64,4 / 68,3 s | 41,1 / 42,0 s |
+| Normal | 56,8 / 61,3 s (antes 65,9 / 67,5) | 36,6 / 38,2 s (antes 37,6 / 38,7) |
+| Picante | 55,3 / 59,5 s | |
+| Infernal | 54,5 / 57,2 s | 35,1 / 36,4 s |
+
+Además **los rivales preparan el auto** (`Championship.preparacionRivales`): en el campeonato suben fecha a
+fecha hasta 13 % más de par, 9 % de agarre y 18 % de frenos, un poco menos que el taller completo del
+jugador (16, 12 y 24 %). En la carrera rápida acompañan las mejoras que tenga el jugador. Antes, con el
+taller completo, las últimas fechas se ganaban de punta a punta. En la última fecha, a nivel normal, la
+mejor vuelta de Polvaredas queda en 55,4 s.
+
+## El auto apoyado en el piso
+
+El auto se dibuja apoyado sobre sus ejes: se mide la altura del piso bajo el tren delantero, el trasero y a
+cada lado, y de ahí salen el cabeceo, el rolido y la altura (`Race.syncVisuals`). Antes se usaba la
+pendiente en el centro del auto con el signo invertido: en subida bajaba la trompa y la clavaba en la
+pista, y en bajada clavaba la cola. `herramientas/apoyo.mjs` recorre las pistas y mide cuánto queda cada
+punta bajo el piso: en la Bajada de los Álamos (32 % de pendiente) la cola quedaba 71 cm enterrada; ahora,
+nada. La sombra de contacto también acompaña la pendiente (y estaba cruzada: más ancha que larga).
 
 ## Idioma
 
@@ -269,7 +310,7 @@ Por eso valen las dos cosas: menos llamadas y menos píxeles.
 ## Pruebas
 
 ```bash
-npm test                       # todo: 127 comprobaciones, minuto y medio
+npm test                       # todo: 158 comprobaciones, poco más de un minuto
 node pruebas/todos.mjs rival   # sólo los grupos cuyo nombre contenga "rival"
 ```
 
@@ -398,6 +439,9 @@ node herramientas/giro.mjs 60 2 1            # fuerzas en un giro a fondo desde 
 node herramientas/curva.mjs                  # aceleración en curva con volante fijo
 node herramientas/tramo.mjs 6                # tiempos de 6 pilotos IA en el tramo del cerro
 node herramientas/largada.mjs                # cuánto se gana o pierde según el régimen al verde
+node herramientas/potencial.mjs              # qué vuelta permite el auto y cuánto le falta al rival
+node herramientas/trazada.mjs                # la trazada de cada pista
+node herramientas/apoyo.mjs                  # cuánto se hunde el auto en las pendientes
 ```
 
 En el navegador, `?auto` hace que el auto del jugador maneje solo y `?mudo` silencia el juego.

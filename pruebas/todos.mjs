@@ -164,8 +164,8 @@ function carreraIA(id, { inversa = false, dif = 1, segundos = 200 } = {}) {
 }
 grupo('Rivales: 20 autos en cada pista', () => {
   // [pista, inversa, dificultad, vueltas mínimas de cada auto en 200 s, mejor vuelta esperada]
-  const casos = [['polvaredas', false, 1, 2, [60, 72]], ['polvaredas', true, 1, 2, [58, 72]], ['polvaredas', false, 1.14, 2, [58, 71]],
-    ['ovalo', false, 1, 4, [34, 42]], ['ovalo', true, 1, 4, [34, 42]], ['ovalo', false, 0.9, 4, [35, 44]]];
+  const casos = [['polvaredas', false, 1, 2, [54, 60]], ['polvaredas', true, 1, 2, [54, 60]], ['polvaredas', false, 1.14, 2, [51.5, 57]], ['polvaredas', false, 0.9, 2, [61, 68]],
+    ['ovalo', false, 1, 4, [35, 39]], ['ovalo', true, 1, 4, [35, 39]], ['ovalo', false, 0.9, 4, [39.5, 43.5]]];
   for (const [id, inversa, dif, minimo, rango] of casos) {
     const r = carreraIA(id, { inversa, dif });
     const nombre = `${id}${inversa ? ' al revés' : ''}, dificultad ${dif}`;
@@ -183,6 +183,26 @@ grupo('Tramo de rally: los rivales corren aparte', async () => {
   const v = Object.values(tiempos);
   comprobar('los 19 rivales terminan el tramo', v.length === 19 && v.every((x) => Number.isFinite(x) && x < 230), `de ${Math.min(...v).toFixed(1)} a ${Math.max(...v).toFixed(1)} s`);
   comprobar('los tiempos no son todos iguales', Math.max(...v) - Math.min(...v) > 2);
+});
+
+// ---------- la trazada de carrera ----------
+grupo('Trazada de los rivales', () => {
+  for (const [id, inversa] of [['polvaredas', false], ['polvaredas', true], ['ovalo', false], ['cerro', false]]) {
+    const tr = new Track(id, { reverse: inversa }), t0 = Date.now(), line = buildRacingLine(tr), ms = Date.now() - t0;
+    const nombre = `${id}${inversa ? ' al revés' : ''}`, margen = tr.hw - 1.15;
+    let max = 0, kEje = 0, kLinea = 0, salto = 0, usa = 0;
+    for (let i = 0; i < tr.n; i++) {
+      max = Math.max(max, Math.abs(line[i])); kEje += tr.samples[i].curvS ** 2; kLinea += line.curv[i] ** 2;
+      if (i) salto = Math.max(salto, Math.abs(line[i] - line[i - 1]));
+      if (Math.abs(line[i]) > 3) usa++;
+    }
+    comprobar(`${nombre}: no se sale del ripio`, max <= margen + 1e-3 && line.length === tr.n && line.curv.length === tr.n, `hasta ${max.toFixed(2)} m del eje, margen ${margen.toFixed(2)}`);
+    comprobar(`${nombre}: es continua`, salto < 0.35 && [...line.curv].every(Number.isFinite), `salto máximo ${salto.toFixed(2)} m por metro`);
+    // la razón de ser: menos curvatura que ir por el medio, usando el ancho
+    comprobar(`${nombre}: dobla menos que el eje usando el ancho`, kLinea < kEje * (id === 'ovalo' ? 1 : 0.93) && usa > tr.n * 0.15, `curvatura cuadrática ${(100 * kLinea / kEje).toFixed(0)} % de la del eje, ${(100 * usa / tr.n).toFixed(0)} % del recorrido a más de 3 m`);
+    comprobar(`${nombre}: se calcula rápido`, ms < 4000, `${ms} ms`);
+    if (!tr.closed) comprobar(`${nombre}: sale y llega por el eje`, Math.abs(line[0]) < 0.05 && Math.abs(line[tr.n - 1]) < 0.05);
+  }
 });
 
 // ---------- carrera completa con el gestor del juego ----------
@@ -236,6 +256,36 @@ grupo('Carrera completa (grilla, vueltas, llegada, resultados)', () => {
   comprobar('las posiciones siguen a la distancia recorrida', orden.every((c, i) => i === 0 || c.state.finished || orden[i - 1].state.finished || orden[i - 1].state.raceDist >= c.state.raceDist));
   race.dispose();
 });
+// ---------- el auto apoyado en las pendientes ----------
+grupo('El auto no se hunde en los desniveles', () => {
+  const { race, track } = armarCarrera({ ...ROUNDS[0], laps: 1 });
+  const auto = race.player, s = auto.state, v = auto.vis, p = new THREE.Vector3();
+  // dónde tocan el piso las ruedas, y la trompa y la cola a la altura del zócalo (x a la izquierda, z adelante)
+  const ruedas = [[0.64, 0, 1.0], [-0.64, 0, 1.0], [0.64, 0, -1.0], [-0.64, 0, -1.0]], puntas = [[0, 0.36, 1.6], [0, 0.36, -1.6]];
+  const colocar = (i, lat = 0) => {
+    const q = track.samples[i];
+    s.x = q.x + q.nx * lat; s.z = q.z + q.nz * lat; s.heading = q.heading; s.trackIdx = i; s.y = track.heightAt(s.x, s.z, i);
+    s.airborne = false; s.speed = 0; s.accFwd = 0; s.accLat = 0; s.vy = 0;
+    auto.pisoP = null; auto.dinP = 0; auto.dinR = 0;
+    race.syncVisuals(0.016); v.root.updateMatrixWorld(true);
+    let ruedaPeor = 0, puntaPeor = -9;
+    for (const r of ruedas) { p.set(r[0], r[1], r[2]).applyMatrix4(v.vis.matrixWorld); ruedaPeor = Math.max(ruedaPeor, Math.abs(p.y - track.heightAt(p.x, p.z, i))); }
+    for (const r of puntas) { p.set(r[0], r[1], r[2]).applyMatrix4(v.vis.matrixWorld); puntaPeor = Math.max(puntaPeor, track.heightAt(p.x, p.z, i) - p.y); }
+    return { ruedaPeor, puntaPeor, cabeceo: v.vis.rotation.x };
+  };
+  let subida = 0, bajada = 0; track.samples.forEach((q, i) => { if (q.slope > track.samples[subida].slope) subida = i; if (q.slope < track.samples[bajada].slope) bajada = i; });
+  const enSubida = colocar(subida), enBajada = colocar(bajada);
+  // rotation.x positivo baja la trompa: en subida tiene que ser negativo
+  comprobar('en la subida más fuerte levanta la trompa', enSubida.cabeceo < -0.1 && enSubida.puntaPeor < 0, `pendiente ${(track.samples[subida].slope * 100).toFixed(0)} %, cabeceo ${enSubida.cabeceo.toFixed(2)}, trompa y cola a ${(-enSubida.puntaPeor * 100).toFixed(0)} cm del piso`);
+  comprobar('en la bajada más fuerte la baja', enBajada.cabeceo > 0.1 && enBajada.puntaPeor < 0, `pendiente ${(track.samples[bajada].slope * 100).toFixed(0)} %, cabeceo ${enBajada.cabeceo.toFixed(2)}, trompa y cola a ${(-enBajada.puntaPeor * 100).toFixed(0)} cm del piso`);
+  let rueda = 0, punta = -9, donde = 0;
+  for (let i = 0; i < track.n; i += 2) for (const lat of [-4, 0, 4]) { const r = colocar(i, lat); rueda = Math.max(rueda, r.ruedaPeor); if (r.puntaPeor > punta) { punta = r.puntaPeor; donde = i; } }
+  comprobar('en toda la pista las ruedas van sobre el piso', rueda < 0.06, `la más separada, ${(rueda * 100).toFixed(1)} cm`);
+  comprobar('y ni la trompa ni la cola lo tocan', punta < 0, `lo más cerca, ${(-punta * 100).toFixed(0)} cm en ${track.sector(donde)}`);
+  s.airborne = true; s.vy = 4; for (let k = 0; k < 60; k++) race.syncVisuals(0.016);
+  comprobar('en el aire, subiendo, levanta la trompa', v.vis.rotation.x < -0.1, v.vis.rotation.x.toFixed(2));
+  race.dispose();
+});
 grupo('Contrarreloj del cerro', async () => {
   const stageTimes = { 'Tito Carrasco': 95, 'Kiko Aravena': 130 };
   const { race } = armarCarrera(ROUNDS.find((r) => r.mode === 'timetrial'), { stageTimes });
@@ -275,6 +325,11 @@ grupo('Campeonato', () => {
   comprobar('la grilla siguiente sale de la tabla', c.gridOrder()[0] === otros[0] && c.gridOrder().length === 20);
   // el jugador quedó segundo (17 + 5 del rival = 22 puntos, contra 25 y 20): el rival pasa a ser el puntero
   comprobar('el rival siguiente es el que está justo arriba en la tabla', c.pickRival() === otros[0] && c.positionOf('Vos') === 2, c.rival);
+  // los rivales preparan el auto a medida que avanza el campeonato
+  const nuevo = new Championship(roster), final = new Championship(roster); final.round = ROUNDS.length - 1;
+  comprobar('los rivales arrancan de fábrica y terminan preparados', nuevo.preparacionRivales() === 0 && final.preparacionRivales() === 1 && c.preparacionRivales() > 0 && c.preparacionRivales() < 0.3, `fecha 2: ${c.preparacionRivales().toFixed(2)}`);
+  const rapida = new Championship(roster); rapida.persist = false; rapida.round = 5; rapida.upgrades = { motor: 2, gomas: 1, frenos: 0 };
+  comprobar('en carrera rápida acompañan las mejoras del jugador, no la fecha', rapida.preparacionRivales() === 0.5);
   c.save(); const d = Championship.load();
   comprobar('guardar y cargar conserva todo', !!d && d.round === c.round && d.money === c.money && d.upgrades.motor === 1 && d.rival === c.rival && d.table.length === 20 && d.damagePct() === c.damagePct());
   for (let i = c.round; i < ROUNDS.length; i++) c.applyResults(res, {});
@@ -301,36 +356,52 @@ grupo('Repetición', () => {
 
 // ---------- resolución automática ----------
 grupo('Resolución automática', () => {
-  let cambios = [];
-  let c = new Calidad((e) => cambios.push(e));
-  const correr = (segundos, cps, cuenta = true) => { for (let i = 0; i < Math.round(segundos * cps); i++) c.cuadro(1 / cps, cuenta); };
-  correr(30, 60);
-  comprobar('a 60 cuadros por segundo no toca nada', cambios.length === 0 && c.escala === 1);
-  correr(30, 50);
-  comprobar('entre 45 y 57 tampoco', cambios.length === 0);
-  cambios = []; c = new Calidad((e) => cambios.push(e)); // de cero, para que las ventanas de dos segundos caigan justas
-  correr(4.2, 30);
-  comprobar('a 30 cuadros baja un escalón cada dos segundos', cambios.length === 2 && Math.abs(c.escala - 0.87 * 0.87) < 1e-6, c.escala.toFixed(3));
-  c.cuadro(0.6); correr(1.9, 30);
-  comprobar('un tirón aislado reinicia la cuenta', cambios.length === 2);
-  correr(60, 30, false);
-  comprobar('en el menú o con la pestaña oculta no mide', cambios.length === 2);
-  correr(60, 20);
-  comprobar('nunca baja del mínimo', Math.abs(c.escala - ESCALA_MINIMA) < 1e-6 && Math.min(...cambios) >= ESCALA_MINIMA - 1e-6, c.escala.toFixed(2));
-  const n = cambios.length; correr(11, 60);
-  comprobar('no sube antes de doce segundos buenos', cambios.length === n);
-  correr(2, 60);
-  comprobar('después sube de a poco', cambios.length === n + 1 && Math.abs(c.escala - ESCALA_MINIMA * 1.1) < 1e-6, c.escala.toFixed(3));
+  // Una máquina de mentira: `placa` es cuántos cuadros da a resolución completa cuando lo que frena son los
+  // píxeles (rinde más al achicar), y `tope` cuántos da como mucho por el procesador (no cambia con la escala).
+  const maquina = (placa, tope = 60) => {
+    const m = { placa, tope, cambios: [] };
+    m.c = new Calidad((e) => m.cambios.push(e));
+    m.cps = () => Math.min(m.tope, 60, m.placa / (m.c.escala * m.c.escala));
+    m.correr = (segundos, cuenta = true) => { let t = 0; while (t < segundos) { const dt = 1 / m.cps(); m.c.cuadro(dt, cuenta); t += dt; } };
+    return m;
+  };
+  let m = maquina(80); m.correr(60);
+  comprobar('a 60 cuadros por segundo no toca nada', m.cambios.length === 0 && m.c.escala === 1);
+  m = maquina(50); m.correr(60);
+  comprobar('entre 45 y 57 tampoco', m.cambios.length === 0);
+  // placa floja: 30 cuadros a resolución completa. Baja hasta pasar los 45 y ahí se queda.
+  m = maquina(30); m.correr(4.3);
+  comprobar('con la placa exigida baja un escalón cada dos segundos', m.cambios.length === 2 && Math.abs(m.c.escala - 0.87 * 0.87) < 1e-6, `escala ${m.c.escala.toFixed(3)}, ${m.cps().toFixed(0)} cuadros`);
+  m.correr(60);
+  comprobar('y se queda donde alcanza los 45', m.cps() >= 45 && m.c.escala > ESCALA_MINIMA && m.cambios.length <= 4, `escala ${m.c.escala.toFixed(2)}, ${m.cps().toFixed(0)} cuadros, ${m.cambios.length} cambios`);
+  m = maquina(30); m.c.cuadro(1 / 30); for (let k = 0; k < 40; k++) { m.c.cuadro(0.6); m.correr(1.9); }
+  comprobar('un tirón aislado reinicia la cuenta', m.cambios.length === 0);
+  m.correr(60, false);
+  comprobar('en el menú o con la pestaña oculta no mide', m.cambios.length === 0);
+  m = maquina(10); m.correr(120);
+  comprobar('nunca baja del mínimo', Math.abs(m.c.escala - ESCALA_MINIMA) < 1e-6 && Math.min(...m.cambios) >= ESCALA_MINIMA - 1e-6, m.c.escala.toFixed(2));
+  // procesador frenado (notebook a batería): 29 cuadros con cualquier resolución
+  m = maquina(200, 29); m.correr(60);
+  comprobar('si bajar no da más cuadros, vuelve a la resolución completa y no insiste', m.c.escala === 1 && m.cambios.length === 2 && m.c.noSirve, `cambios: ${m.cambios.map((x) => x.toFixed(2)).join(' → ')}`);
+  // mitad y mitad: la primera bajada sirve, la segunda ya no
+  m = maquina(36, 44); m.correr(60);
+  comprobar('conserva las bajadas que sirvieron y deshace la que no', Math.abs(m.c.escala - 0.87) < 1e-6, `cambios: ${m.cambios.map((x) => x.toFixed(2)).join(' → ')}`);
+  // la máquina se recupera (se enchufa): vuelve a subir de a poco, y no antes de doce segundos buenos
+  m = maquina(30); m.correr(30); const baja = m.c.escala, n = m.cambios.length; m.placa = 200;
+  m.correr(11);
+  comprobar('no sube antes de doce segundos buenos', m.cambios.length === n);
+  m.correr(3);
+  comprobar('después sube de a poco', m.cambios.length === n + 1 && Math.abs(m.c.escala - Math.min(1, baja * 1.1)) < 1e-6, m.c.escala.toFixed(3));
+  m.correr(120);
+  comprobar('y llega a la resolución completa', m.c.escala === 1);
   // la subida no aguanta: vuelve al nivel anterior, lo deja como techo y no insiste
-  correr(2.1, 30);
-  comprobar('si la subida no aguanta vuelve al nivel anterior', Math.abs(c.escala - ESCALA_MINIMA) < 1e-6 && Math.abs(c.techo - ESCALA_MINIMA) < 1e-6, `escala ${c.escala.toFixed(2)}, techo ${c.techo.toFixed(2)}`);
-  const m = cambios.length; correr(120, 60);
-  comprobar('y no vuelve a probar: la imagen no va y viene', cambios.length === m);
-  // recuperación completa cuando sí aguanta
-  const d = new Calidad(() => {}); for (let i = 0; i < 70; i++) d.cuadro(1 / 30); for (let i = 0; i < 60 * 60; i++) d.cuadro(1 / 60);
-  comprobar('si el equipo se recupera vuelve a la resolución completa', d.escala === 1, d.escala.toFixed(2));
-  d.fijar(0.8); d.fijar(1);
-  comprobar('se puede fijar a mano (al apagar la opción)', d.escala === 1);
+  m = maquina(30); m.correr(30); const estable = m.c.escala; m.placa = 200; m.correr(13.5); // sube un escalón
+  m.placa = 25; m.correr(5);                                                                 // y ahí no alcanza
+  comprobar('si una subida no aguanta, ese nivel queda como techo', Math.abs(m.c.techo - estable) < 1e-6 && m.c.escala <= estable + 1e-6, `escala ${m.c.escala.toFixed(2)}, techo ${m.c.techo.toFixed(2)}`);
+  m.placa = 30; m.correr(60); const k = m.cambios.length; m.placa = 200; m.correr(180);
+  comprobar('y no vuelve a pasarlo aunque sobren cuadros: la imagen no va y viene', m.cambios.length === k && Math.abs(m.c.escala - estable) < 1e-6, `escala ${m.c.escala.toFixed(2)}`);
+  m.c.fijar(0.8); m.c.fijar(1);
+  comprobar('se puede fijar a mano (al apagar la opción)', m.c.escala === 1);
 });
 
 // ---------- el modelo del auto: cuántas llamadas de dibujo cuesta ----------

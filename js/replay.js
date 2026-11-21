@@ -13,7 +13,7 @@ export class Replay {
     const f = new Float32Array(this.n * STRIDE);
     cars.forEach((c, i) => {
       const s = c.state, k = i * STRIDE;
-      f[k] = s.x; f[k + 1] = s.y; f[k + 2] = s.z; f[k + 3] = s.heading; f[k + 4] = c.vis.vis.rotation.x; f[k + 5] = c.vis.vis.rotation.z; f[k + 6] = s.steer; f[k + 7] = s.wheelAngle;
+      f[k] = s.x; f[k + 1] = s.y + (c.apoyo || 0); f[k + 2] = s.z; f[k + 3] = s.heading; f[k + 4] = c.vis.vis.rotation.x; f[k + 5] = c.vis.vis.rotation.z; f[k + 6] = s.steer; f[k + 7] = s.wheelAngle;
     });
     this.frames.push(f); this.times.push(time);
   }

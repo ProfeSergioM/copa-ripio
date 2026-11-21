@@ -67,7 +67,9 @@ export class Race {
         const dd = this.settings.difficulty - 1;
         // Empuje propio de la pista: en circuitos fáciles (el óvalo) los rivales van con más auto
         const emp = this.track.def.aiBoost || 1;
-        state.tune = { torque: (1 + dd * 0.9) * emp, grip: (1.02 + dd * 0.9) * emp, brake: (1 + dd * 0.5) * emp };
+        // y lo van preparando a lo largo del campeonato, un poco menos de lo que puede el jugador en el taller
+        const prep = this.champ ? this.champ.preparacionRivales() : 0;
+        state.tune = { torque: (1 + dd * 0.9) * emp * (1 + 0.13 * prep), grip: (1.02 + dd * 0.9) * emp * (1 + 0.09 * prep), brake: (1 + dd * 0.5) * emp * (1 + 0.18 * prep) };
         car.ai = new AIDriver(state, this.track, this.line, { skill: r.skill, aggression: r.aggression, seed: r.seed, difficulty: this.settings.difficulty, tune: state.tune });
       }
       else if (this.champ) { state.tune = this.champ.tune(); this.applyCarriedDamage(car, this.champ.damage); }
@@ -409,11 +411,27 @@ export class Race {
       // el detalle chico se va recién a 70 m, donde ya mide menos de un píxel, y vuelve a 60: con ese margen
       // no parpadea cuando un auto anda justo en el límite (antes se cortaba a 30 m y se veía el salto)
       if (v.lod) { const lim = v.lodCerca ? 70 : 60; const cerca = c.isPlayer || dCam2 < lim * lim; if (cerca !== v.lodCerca) { v.lodCerca = cerca; for (const m of v.lod) m.visible = cerca; } }
-      let pitch = clamp(Math.atan(s.gradF || 0) - s.accFwd * 0.012, -0.3, 0.3), roll = clamp(-Math.atan(s.gradL || 0) - s.accLat * 0.02, -0.3, 0.3);
-      if (s.airborne) pitch = clamp(-s.vy * 0.05, -0.35, 0.35);
+      // El auto se apoya sobre sus ejes: se mide la altura del piso bajo el tren delantero, el trasero y a cada
+      // lado, y de ahí salen el cabeceo, el rolido y la altura. Antes se usaba la pendiente en el centro del
+      // auto con el signo al revés: en subida bajaba la trompa y la clavaba en la pista, en bajada clavaba
+      // la cola, y en el pie de una lomada quedaba hundido hasta los guardabarros. Encima de eso van el
+      // cabeceo por acelerar o frenar y el rolido en curva, que son del auto y no del piso.
+      const dtv = dt || 0.016;
+      if (s.airborne) { c.pisoP = dampTo(c.pisoP || 0, 0, 6, dtv); c.pisoR = dampTo(c.pisoR || 0, 0, 6, dtv); c.apoyo = dampTo(c.apoyo || 0, 0, 6, dtv); }
+      else {
+        const T = this.track, sh = Math.sin(s.heading), ch = Math.cos(s.heading);
+        const yF = T.heightAt(s.x + sh, s.z + ch, s.trackIdx), yT = T.heightAt(s.x - sh, s.z - ch, s.trackIdx);
+        const yI = T.heightAt(s.x + ch * 0.64, s.z - sh * 0.64, s.trackIdx), yD = T.heightAt(s.x - ch * 0.64, s.z + sh * 0.64, s.trackIdx);
+        const pP = clamp(-Math.atan2(yF - yT, 2), -0.5, 0.5), pR = clamp(Math.atan2(yI - yD, 1.28), -0.4, 0.4), ap = clamp((yF + yT) / 2 - s.y, -0.12, 0.5);
+        if (c.pisoP == null) { c.pisoP = pP; c.pisoR = pR; c.apoyo = ap; }
+        else { c.pisoP = dampTo(c.pisoP, pP, 18, dtv); c.pisoR = dampTo(c.pisoR, pR, 18, dtv); c.apoyo = dampTo(c.apoyo, ap, 18, dtv); }
+      }
+      c.dinP = dampTo(c.dinP || 0, s.airborne ? clamp(-s.vy * 0.05, -0.35, 0.35) : clamp(-s.accFwd * 0.012, -0.2, 0.2), 8, dtv);
+      c.dinR = dampTo(c.dinR || 0, clamp(-s.accLat * 0.02, -0.2, 0.2), 8, dtv);
       const bump = (!s.airborne && Math.abs(s.speed) > 3) ? Math.sin(this.time * 37 + c.gridSlot) * 0.006 * SURFACES[s.surface].rolling * clamp(Math.abs(s.speed) / 15, 0, 1) : 0;
-      v.vis.rotation.x = dampTo(v.vis.rotation.x, pitch, 8, dt || 0.016); v.vis.rotation.z = dampTo(v.vis.rotation.z, roll, 8, dt || 0.016);
-      v.vis.position.y = bump;
+      v.vis.rotation.x = c.pisoP + c.dinP; v.vis.rotation.z = c.pisoR + c.dinR;
+      v.vis.position.y = bump + c.apoyo;
+      v.shadowBlob.rotation.set(-Math.PI / 2 + c.pisoP, 0, c.pisoR); v.shadowBlob.position.y = 0.07 + c.apoyo;
       // la luz de freno queda prendida un mínimo de un cuarto de segundo: la IA levanta y frena a toques,
       // y con el freno rondando el umbral la luz titilaba (con el brillo nocturno se notaba mucho)
       if (s.brake > 0.2 || s.handbrake) c.frenoT = 0.25; else c.frenoT = (c.frenoT || 0) - dt;
@@ -482,7 +500,8 @@ export class Race {
     this.cars.forEach((c, i) => {
       const k = i * STRIDE, v = c.vis;
       v.root.position.set(f[k], f[k + 1], f[k + 2]); v.root.rotation.y = f[k + 3];
-      v.vis.rotation.x = f[k + 4]; v.vis.rotation.z = f[k + 5];
+      v.vis.rotation.x = f[k + 4]; v.vis.rotation.z = f[k + 5]; v.vis.position.y = 0;
+      v.shadowBlob.rotation.set(-Math.PI / 2 + f[k + 4], 0, f[k + 5]); v.shadowBlob.position.y = 0.07;
       for (const w of v.wheels) { w.spin.rotation.x = f[k + 7]; if (w.steer) w.group.rotation.y = f[k + 6]; }
     });
   }

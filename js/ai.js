@@ -3,17 +3,87 @@ import { clamp, wrapAngle, lerp, sign, mulberry32 } from './util.js';
 import { GRAVITY, CAR, SURFACES, LARGADA } from './config.js';
 import { steerLimit, resetCarAt } from './physics.js';
 
-// Línea de carrera aproximada (exterior-interior-exterior) por muestra.
+// Trazada de carrera: la línea de menor curvatura que entra en el ancho del ripio. Entra abierta, toca el
+// vértice y sale abierta, que es lo que hace una persona; en una curva de 90° y 20 m de radio en el eje,
+// usar el ancho de la pista lleva el radio real a más de 40 m, o sea un 40 % más de velocidad con el mismo
+// agarre. La línea vieja se movía apenas 3,7 m hacia cada lado según la curvatura del eje, y la velocidad de
+// cada curva se calculaba con el radio del eje y no con el de la trazada: los pilotos doblaban todo como si
+// fueran por el medio, y darles mejor auto casi no los hacía más rápidos (45 % más de motor y agarre bajaba
+// la vuelta apenas un 4 %).
+//
+// Se resuelve con puntos de control cada tantos metros, de grueso a fino. En cada nivel se minimiza la suma
+// de los cuadrados de la segunda diferencia de los puntos (la curvatura), moviendo cada punto sobre la normal
+// de la pista y sin salirse del margen: es un problema cuadrático con topes, y alcanza con pasar punto por
+// punto hasta que no se mueven más.
+//
+// Devuelve el corrimiento lateral por muestra, como antes, y le cuelga `curv`: la curvatura con signo de la
+// trazada en cada muestra (positiva = dobla a la izquierda, igual que curvS).
 export function buildRacingLine(track) {
-  const s = track.samples, n = track.n, hw = track.hw;
-  const raw = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    let ahead = 0; for (let k = 14; k < 40; k++) ahead += s[track.wrap(i + k)].curvS; ahead /= 26;
-    const now = s[i].curvS;
-    raw[i] = 0.45 * hw * clamp(now * 42, -1, 1) - 0.35 * hw * clamp(ahead * 42, -1, 1);
+  // se calcula una vez por pista y sentido (el tramo del cerro tarda casi un segundo) y queda guardada en ella
+  const clave = track.reverse ? 'inv' : 'nor', guardadas = track._trazadas || (track._trazadas = {});
+  if (guardadas[clave]) return guardadas[clave];
+  const s = track.samples, n = track.n, cerrada = track.closed;
+  const margen = track.hw - 1.15; // el auto mide 1,5 m de ancho: la rueda de afuera queda a 40 cm del borde
+  let ctrl = null;                // corrimientos del nivel anterior, para arrancar el siguiente
+  for (const paso of [32, 16, 8, 4]) {
+    const m = Math.max(8, Math.round((cerrada ? n : n - 1) / paso) + (cerrada ? 0 : 1));
+    const en = (k) => (cerrada ? Math.round(k * n / m) % n : Math.min(n - 1, Math.round(k * (n - 1) / (m - 1))));
+    const a = new Float64Array(m), cx = new Float64Array(m), cz = new Float64Array(m), nx = new Float64Array(m), nz = new Float64Array(m);
+    for (let k = 0; k < m; k++) {
+      const q = s[en(k)]; cx[k] = q.x; cz[k] = q.z; nx[k] = q.nx; nz[k] = q.nz;
+      if (ctrl) { // interpolar el nivel anterior
+        const f = cerrada ? k * ctrl.length / m : k * (ctrl.length - 1) / (m - 1), i0 = Math.floor(f), u = f - i0;
+        const v0 = ctrl[cerrada ? i0 % ctrl.length : Math.min(i0, ctrl.length - 1)], v1 = ctrl[cerrada ? (i0 + 1) % ctrl.length : Math.min(i0 + 1, ctrl.length - 1)];
+        a[k] = v0 + (v1 - v0) * u;
+      }
+    }
+    const W = (k) => (cerrada ? ((k % m) + m) % m : k);
+    const desde = cerrada ? 0 : 2, hasta = cerrada ? m : m - 2; // en un tramo abierto las puntas quedan en el eje
+    const w = new Float64Array(m).fill(1), h0 = (cerrada ? n : n - 1) / (cerrada ? m : m - 1);
+    const X = (k) => cx[k] + nx[k] * a[k], Z = (k) => cz[k] + nz[k] * a[k];
+    for (let it = 0; it < 6000; it++) {
+      // PESOS
+      if (it % 8 === 0) for (let k = 0; k < m; k++) {
+        const p = W(k - 1), q = W(k + 1);
+        const h = (Math.hypot(X(k) - X(p), Z(k) - Z(p)) + Math.hypot(X(q) - X(k), Z(q) - Z(k))) / 2 || h0;
+        w[k] = (h0 / h) ** 3;
+      }
+      let mov = 0;
+      for (let k = desde; k < hasta; k++) {
+        const a2 = W(k - 2), a1 = W(k - 1), b1 = W(k + 1), b2 = W(k + 2);
+        // segundas diferencias en el punto anterior, en este y en el siguiente
+        const ax = X(a2) - 2 * X(a1) + X(k), az = Z(a2) - 2 * Z(a1) + Z(k);
+        const mx = X(a1) - 2 * X(k) + X(b1), mz = Z(a1) - 2 * Z(k) + Z(b1);
+        const bx = X(k) - 2 * X(b1) + X(b2), bz = Z(k) - 2 * Z(b1) + Z(b2);
+        const gx = w[a1] * ax - 2 * w[k] * mx + w[b1] * bx, gz = w[a1] * az - 2 * w[k] * mz + w[b1] * bz;
+        const paso = -(gx * nx[k] + gz * nz[k]) / (w[a1] + 4 * w[k] + w[b1]);
+        const nuevo = clamp(a[k] + paso * 1.4, -margen, margen); // sobrerrelajado: llega antes
+        mov = Math.max(mov, Math.abs(nuevo - a[k])); a[k] = nuevo;
+      }
+      if (mov < 1e-5) break;
+    }
+    ctrl = a;
   }
-  const line = new Float32Array(n);
-  for (let i = 0; i < n; i++) { let a = 0; for (let k = -18; k <= 18; k++) a += raw[track.wrap(i + k)]; line[i] = clamp(a / 37, -0.62 * hw, 0.62 * hw); }
+  // de los puntos de control a cada muestra, con una curva suave entre ellos
+  const m = ctrl.length, line = new Float32Array(n);
+  const C = (k) => ctrl[cerrada ? ((k % m) + m) % m : clamp(k, 0, m - 1)];
+  for (let i = 0; i < n; i++) {
+    const f = cerrada ? i * m / n : i * (m - 1) / (n - 1), k = Math.floor(f), u = f - k;
+    const p0 = C(k - 1), p1 = C(k), p2 = C(k + 1), p3 = C(k + 2);
+    line[i] = clamp(0.5 * (2 * p1 + (p2 - p0) * u + (2 * p0 - 5 * p1 + 4 * p2 - p3) * u * u + (3 * p1 - p0 - 3 * p2 + p3) * u * u * u), -margen, margen);
+  }
+  // curvatura de la trazada: cuánto gira la tangente entre un tramo de 4 m y el siguiente, suavizada
+  const px = (i) => { const j = track.wrap(i); return s[j].x + s[j].nx * line[j]; }, pz = (i) => { const j = track.wrap(i); return s[j].z + s[j].nz * line[j]; };
+  const cruda = new Float32Array(n), D = 4;
+  for (let i = 0; i < n; i++) {
+    const x0 = px(i - D), z0 = pz(i - D), x1 = px(i), z1 = pz(i), x2 = px(i + D), z2 = pz(i + D);
+    const t1x = x1 - x0, t1z = z1 - z0, t2x = x2 - x1, t2z = z2 - z1, l1 = Math.hypot(t1x, t1z) || 1, l2 = Math.hypot(t2x, t2z) || 1;
+    cruda[i] = (t2x * t1z - t2z * t1x) / (l1 * l2) / ((l1 + l2) / 2);
+  }
+  const curv = new Float32Array(n);
+  for (let i = 0; i < n; i++) { let c = 0; for (let k = -4; k <= 4; k++) c += cruda[track.wrap(i + k)]; curv[i] = c / 9; }
+  line.curv = curv;
+  guardadas[clave] = line;
   return line;
 }
 
@@ -32,7 +102,10 @@ export class AIDriver {
     // La dificultad no infla la estimación: la ventaja real viene del "tune" del auto (más agarre, par y frenos),
     // y la IA conoce ese agarre. Si la estimación crece más que el agarre real, entran pasados y se van afuera.
     const tune = profile.tune || { grip: 1, brake: 1 };
-    this.speedFactor = (0.91 + 0.09 * this.skill) * (1 + Math.max(0, this.difficulty - 1) * (profile.sfk != null ? profile.sfk : 0.35)) * (profile.pace || 1);
+    // Por debajo de la dificultad normal los pilotos además entran más despacio a las curvas: con sólo quitarles
+    // auto casi no se notaba. Con 0,9 (Tranqui) quedan cerca de lo que era el nivel normal antes de la trazada.
+    const calma = 1 - Math.max(0, 1 - this.difficulty) * 1.8;
+    this.speedFactor = (0.91 + 0.09 * this.skill) * (1 + Math.max(0, this.difficulty - 1) * (profile.sfk != null ? profile.sfk : 0.35)) * calma * (profile.pace || 1);
     this.decel = 4.3 * (0.85 + 0.3 * this.skill) * (tune.brake || 1);
     // Cuánto agarre lateral cree tener el piloto. Medido con herramientas/agarre.mjs, el auto sostiene
     // ~0,55 g en curva sostenida, bastante menos que el µ nominal de las gomas: el modelo de deriva nunca
@@ -104,6 +177,11 @@ export class AIDriver {
     const li = t.wrap(c.trackIdx + Math.round(look));
     const tgt = s[li];
     let lat = this.line[li] + this.bias;
+    // La velocidad de cada curva sale de la curvatura de la trazada, que es más suave que la del eje. Eso vale
+    // mientras el auto va por la trazada: corrido de ella (pasando a otro, en el pelotón de la largada) se
+    // vuelve de a poco a la curvatura del eje, que es la más cerrada de las dos.
+    const kl = this.line.curv || null;
+    const fuera = clamp((Math.abs(c.lateral - this.line[c.trackIdx]) - 1.5) / 2.5, 0, 1);
     // primeros metros: cada uno en su columna de largada, sin cruzarse
     if (this.gridLat == null) this.gridLat = c.lateral;
     const sinceGreen = raceTime - greenTime;
@@ -170,7 +248,7 @@ export class AIDriver {
       if (Math.abs(bs) < corridor) { sideShift += -Math.sign(bs || 1) * (corridor - Math.abs(bs)) * 1.6; if (bl < 5) barBrake = Math.max(barBrake, 1 - bl / 5); }
     }
     const offRoad = Math.abs(c.lateral) > t.hw;
-    lat = clamp(lat + clamp(sideShift, -2.5, 2.5), offRoad ? -t.W - 8 : -t.hw + 0.3, offRoad ? t.W + 8 : t.hw - 0.3);
+    lat = clamp(lat + clamp(sideShift, -2.5, 2.5), offRoad ? -t.W - 8 : -t.hw + 0.75, offRoad ? t.W + 8 : t.hw - 0.75);
     // el objetivo lateral se mueve de a poco (máx 2,5 m/s): sin bandazos
     if (this.latTarget == null || this.recoverT > 0) this.latTarget = lat;
     this.latTarget += clamp(lat - this.latTarget, -4 * dt, 4 * dt);
@@ -185,7 +263,8 @@ export class AIDriver {
     // apuntaba para atrás, el piloto volanteaba a tope de un lado al otro y terminaba en la zanja.
     const refHead = c.heading + wrapAngle(vHead - c.heading) * 0.55;
     // ángulo: anticipación por curvatura del camino (feed-forward) + corrección de rumbo, convertido a fracción del tope
-    const curvAhead = s[t.wrap(c.trackIdx + Math.round(clamp(Math.abs(speed) * 0.35, 3, 10)))].curvS;
+    const iAd = t.wrap(c.trackIdx + Math.round(clamp(Math.abs(speed) * 0.35, 3, 10)));
+    const curvAhead = kl ? lerp(kl[iAd], s[iAd].curvS, fuera) : s[iAd].curvS;
     const ff = Math.atan(CAR.wheelbase * curvAhead) * 1.15;
     const err = wrapAngle(targetHeading - refHead);
     // El mismo agarre que usa la física: si no se cuenta la preparación del auto (tune.grip), el tope de
@@ -195,7 +274,11 @@ export class AIDriver {
       * (1 - 0.12 * Math.max(c.damage.left, c.damage.right));
     const lim = steerLimit(Math.abs(speed), mu);
     // pure pursuit geométrico: curvatura necesaria para pasar por el punto objetivo → ángulo de ruedas
-    let steer = (ff + err * (1.3 + 0.5 * this.skill) - c.yawRate * 0.01) / lim;
+    // La corrección de rumbo se afloja con la velocidad (entera hasta 43 km/h, a la mitad a 86). Con la misma
+    // mano a cualquier velocidad, a 100 km/h un error de tres grados pedía seis veces el agarre que hay: el
+    // volante iba de tope a tope, la cola se soltaba al entrar a las curvas rápidas y terminaban en trompo.
+    const mano = clamp(12 / Math.max(Math.abs(speed), 1), 0.35, 1);
+    let steer = (ff + err * (1.3 + 0.5 * this.skill) * mano - c.yawRate * 0.01) / lim;
     if (this.mistake > 0) steer += this.mistakeSteer;
     inp.steer = clamp(steer, -1, 1);
 
@@ -206,8 +289,9 @@ export class AIDriver {
     const STEP = 2, N = 100, ds = STEP * t.step;
     let allowed = 45;
     for (let k = N; k >= 0; k -= STEP) {
-      const q = s[t.wrap(c.trackIdx + k)];
-      const curv = Math.abs(q.curvS) + 1e-4;
+      const iq = t.wrap(c.trackIdx + k), q = s[iq];
+      const kc = Math.abs(q.curvS), kt = kl ? Math.abs(kl[iq]) : kc;
+      const curv = kt + (Math.max(kc, kt) - kt) * fuera + 1e-4;
       let vc = Math.sqrt(muK * g / curv) * this.speedFactor;
       vc *= clamp(1 - this.hs * (vc - 12), 0.75, 1);
       if (q.slope < -0.06) vc *= 0.92; // bajadas: cuidado
@@ -246,7 +330,7 @@ export class AIDriver {
     // Frenar y doblar a la vez se paga caro: el freno va 58 % adelante, que es el mismo tren al que se le
     // pide el giro, así que el auto se va largo y al soltar se cruza. Se frena derecho y se dobla de
     // levantada; sólo si viene muy pasado se frena igual, aunque cueste.
-    const latDemand = Math.abs(sm.curvS) * speed * speed / (mu * g);
+    const latDemand = Math.abs(kl ? lerp(kl[c.trackIdx], sm.curvS, fuera) : sm.curvS) * speed * speed / (mu * g);
     const emergencia = clamp((sobra - 3) / 6, 0, 1);
     inp.brake *= Math.max(emergencia, clamp(1.05 - latDemand * 1.9, 0, 1));
     // si la cola se va, levanta (y no frena, que empeora)

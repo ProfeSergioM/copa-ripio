@@ -311,7 +311,7 @@ export function createCarVisual(spec) {
   const orig = new Float32Array(geo.attributes.position.array);
   const origCol = new Float32Array(geo.attributes.color.array);
   // sombra de contacto bajo el auto (aterriza el dibujo)
-  const shadowBlob = new THREE.Mesh(new THREE.PlaneGeometry(3.9, 2.3), contactShadowMat()); shadowBlob.rotation.x = -Math.PI / 2; shadowBlob.position.y = 0.07; shadowBlob.renderOrder = 1; root.add(shadowBlob);
+  const shadowBlob = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 3.9), contactShadowMat()); shadowBlob.rotation.order = 'ZXY'; shadowBlob.rotation.x = -Math.PI / 2; shadowBlob.position.y = 0.07; shadowBlob.renderOrder = 1; root.add(shadowBlob);
 
   const parts = [];
   const addPart = (mesh, zone, threshold) => { mesh.castShadow = true; vis.add(mesh); parts.push({ mesh, zone, threshold, attached: true }); return mesh; };

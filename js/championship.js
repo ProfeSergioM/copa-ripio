@@ -53,6 +53,13 @@ export class Championship {
   standings() { return [...this.table].sort((a, b) => b.points - a.points || (b.wins - a.wins) || a.name.localeCompare(b.name)); }
   positionOf(name) { return this.standings().findIndex(r => r.name === name) + 1; }
   tune() { return { torque: UPGRADES.motor.effect(this.upgrades.motor), grip: UPGRADES.gomas.effect(this.upgrades.gomas), brake: UPGRADES.frenos.effect(this.upgrades.frenos) }; }
+  // Los rivales también preparan el auto. De 0 (de fábrica) a 1 (todo lo que se puede): en el campeonato
+  // sube fecha a fecha, y en la carrera rápida acompaña a las mejoras que tenga el jugador. Sin esto, con el
+  // taller completo (16 % más de par, 12 % de agarre) las últimas fechas se ganaban de punta a punta.
+  preparacionRivales() {
+    if (this.persist === false) { const u = this.upgrades; return clamp((u.motor + u.gomas + u.frenos) / 6, 0, 1); }
+    return clamp(this.round / (ROUNDS.length - 1), 0, 1);
+  }
   damagePct() { const d = this.damage; return (d.front + d.rear + d.left + d.right) / 4; }
   repairCost() { return Math.round(this.damagePct() * REPAIR_FULL); }
   // repara lo que alcance con la plata (o todo si alcanza)

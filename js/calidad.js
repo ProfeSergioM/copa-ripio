@@ -16,6 +16,7 @@ export class Calidad {
     this.aplicar = aplicar;
     this.escala = 1; this.techo = 1;
     this.t = 0; this.cuadros = 0; this.buenas = 0; this.desdeSubida = 1e9;
+    this.noSirve = false; this.cpsAlBajar = null; this.escalaAlBajar = 1;
   }
 
   fijar(e) {
@@ -32,11 +33,20 @@ export class Calidad {
     if (this.t < 2) return;
     const cps = this.cuadros / this.t;
     this.t = 0; this.cuadros = 0; this.desdeSubida += 2;
-    if (cps < 45 && this.escala > ESCALA_MINIMA + 1e-3) {
+    if (cps < 45) {
+      this.buenas = 0;
       // la última subida no aguantó: se vuelve a donde andaba bien y no se insiste
       if (this.desdeSubida <= 6) { this.techo = this.previa; this.desdeSubida = 1e9; this.fijar(this.previa); }
-      else this.fijar(Math.max(ESCALA_MINIMA, this.escala * 0.87));
-    } else if (cps > 57) {
+      // La bajada anterior no ganó ni un 8 % de cuadros: lo que frena no es la cantidad de píxeles sino el
+      // procesador (pasa con la notebook a batería). Se deshace esa bajada y no se vuelve a intentar: seguir
+      // bajando sólo empeoraría la imagen.
+      else if (this.cpsAlBajar != null && cps < this.cpsAlBajar * 1.08) { this.noSirve = true; this.cpsAlBajar = null; this.fijar(this.escalaAlBajar); }
+      else if (!this.noSirve && this.escala > ESCALA_MINIMA + 1e-3) { this.cpsAlBajar = cps; this.escalaAlBajar = this.escala; this.fijar(Math.max(ESCALA_MINIMA, this.escala * 0.87)); }
+      else this.cpsAlBajar = null;
+      return;
+    }
+    this.cpsAlBajar = null;
+    if (cps > 57) {
       if (++this.buenas >= 6 && this.escala < this.techo - 0.01) {
         this.previa = this.escala;
         this.fijar(Math.min(this.techo, this.escala * 1.1));

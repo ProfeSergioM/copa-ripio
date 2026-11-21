@@ -477,7 +477,7 @@ let frames = 0, fpsT = 0;
 function loop(now) { requestAnimationFrame(loop); tick(now); }
 app.tick = (dtMs) => tick((app.lastT || performance.now()) + dtMs);
 function tick(now) {
-  const real = (now - (app.lastT || now)) / 1000;
+  const real = Math.max(0, (now - (app.lastT || now)) / 1000); // nunca negativo: con un paso hacia atrás los suavizados se disparan y la cámara queda en cualquier lado
   const dt = Math.min(real, 0.05); app.lastT = now;
   calidad.cuadro(real, app.settings.resAuto !== false && app.state === 'race' && !document.hidden);
   const race = app.race;

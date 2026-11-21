@@ -13,7 +13,7 @@ const dd = dif - 1;
 for (let i = 0; i < 20; i++) {
   const slot = track.gridSlot(i);
   const c = createCar(i, slot.x, slot.z, slot.heading); c.y = track.heightAt(slot.x, slot.z); c.trackIdx = slot.idx; c.frozen = false;
-  const emp = process.env.EMP ? parseFloat(process.env.EMP) : (track.def.aiBoost || 1);
+  const emp = (process.env.EMP ? parseFloat(process.env.EMP) : (track.def.aiBoost || 1)) * (1 + 0.13 * parseFloat(process.env.PREP || "0"));
   c.tune = { torque: (1 + dd * 0.9) * emp, grip: (1.02 + dd * 0.9) * emp, brake: (1 + dd * 0.5) * emp };
   const d = DRIVER_NAMES[i];
   cars.push({ state: c, name: d[0], ai: new AIDriver(c, track, line, { skill: d[1], aggression: d[2], seed: 100 + i, difficulty: dif, tune: c.tune, muk: process.env.MUK ? parseFloat(process.env.MUK) : undefined, hs: process.env.HS ? parseFloat(process.env.HS) : undefined, sfk: process.env.SFK ? parseFloat(process.env.SFK) : undefined, pace: process.env.PACE ? parseFloat(process.env.PACE) : (track.def.aiPace || 1) }), lastP: 0, laps: [], lapT: 0, off: 0, offWide: 0, stuck: 0 });
