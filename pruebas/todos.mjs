@@ -35,7 +35,7 @@ const { Replay, STRIDE } = await import('../js/replay.js');
 const { computeStageTimes } = await import('../js/stage.js');
 const { t, setIdioma } = await import('../js/idioma.js');
 const { Race } = await import('../js/race.js');
-const { createCarVisual, disposeCarVisual, detachParts } = await import('../js/car.js');
+const { createCarVisual, disposeCarVisual, detachParts, deformBody } = await import('../js/car.js');
 const { Calidad, ESCALA_MINIMA } = await import('../js/calidad.js');
 const THREE = await import('three');
 
@@ -405,7 +405,7 @@ grupo('Resolución automática', () => {
 });
 
 // ---------- el modelo del auto: cuántas llamadas de dibujo cuesta ----------
-grupo('Modelo del auto', () => {
+grupo('Modelo del auto', async () => {
   for (const accessory of ['none', 'rack', 'lights', 'spoiler', 'antenna']) {
     const cv = createCarVisual({ color: '#d94a3a', roofColor: '#f2e6c9', number: 7, accessory, stripes: true, helmetColor: '#e2a33b', seed: 3 });
     let mallas = 0, sombra = 0, lejos = 0, tris = 0;
@@ -420,6 +420,23 @@ grupo('Modelo del auto', () => {
     comprobar(`accesorio ${accessory}: las piezas se desprenden con el daño`, sueltas.length >= 4 && sueltas.every((p) => p.mesh && !p.mesh.parent), `${sueltas.length} piezas`);
     disposeCarVisual(cv);
   }
+  // la carrocería con volumen (js/casco.js), que es la que usa el juego
+  for (const accessory of ['none', 'rack', 'lights', 'spoiler', 'antenna']) {
+    const cv = createCarVisual({ color: '#d94a3a', roofColor: '#f2e6c9', number: 7, accessory, stripes: true, helmetColor: '#e2a33b', seed: 3, casco: 'fiel' });
+    let mallas = 0, sombra = 0, rotos = 0;
+    cv.root.traverse((o) => { if (o.isMesh) { mallas++; if (o.castShadow) sombra++; for (const x of o.geometry.attributes.position.array) if (!Number.isFinite(x)) rotos++; } });
+    comprobar(`casco con volumen, accesorio ${accessory}: se arma entero y con menos mallas que el viejo`, rotos === 0 && mallas <= 36 && sombra <= 12 && cv.wheels.length === 4 && cv.headlights.length === 2 && cv.taillights.length === 2, `${mallas} mallas, ${sombra} con sombra`);
+    const antes = cv.geo.attributes.position.array.slice();
+    deformBody(cv, new THREE.Vector3(0.2, 0.75, 1.5), new THREE.Vector3(0, 0, -1), 0.2);
+    let movidos = 0; cv.geo.attributes.position.array.forEach((x, i) => { if (Math.abs(x - antes[i]) > 1e-4) movidos++; });
+    comprobar(`casco con volumen, accesorio ${accessory}: se abolla y suelta piezas`, movidos > 20 && detachParts(cv, { front: 1, rear: 1, left: 1, right: 1 }).length >= 4, `${movidos} coordenadas movidas`);
+    disposeCarVisual(cv);
+  }
+  const { superficie, VARIANTES } = await import('../js/casco.js');
+  const S = superficie(VARIANTES.fiel);
+  // medidas del 600 a la escala del juego: 3,13 de largo, 1,44 de ancho, 1,53 de alto, cabina algo más angosta que la chapa
+  comprobar('casco con volumen: proporciones de Fiat 600 y el tamaño de la carrocería vieja', entre(S.xLado(0.72, 0) * 2, 1.44, 1.56) && entre(S.seccion(-0.3).yt, 1.56, 1.66) && entre(S.xLado(1.2, 0) / S.xLado(0.72, 0), 0.86, 0.97) && S.zFrente(0, 0.6) > 1.58 && S.zCola(0, 0.6) < -1.68,
+    `ancho ${(S.xLado(0.72, 0) * 2).toFixed(2)} m, alto ${S.seccion(-0.3).yt.toFixed(2)} m, cabina al ${(100 * S.xLado(1.2, 0) / S.xLado(0.72, 0)).toFixed(0)} % del ancho`);
 });
 
 // ---------- pistas ----------

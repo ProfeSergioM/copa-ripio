@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { clamp, mulberry32 } from './util.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { createCarVisualLoft } from './casco.js';
 
 let gradientMap = null;
 export function toonGradient() {
@@ -45,7 +46,7 @@ const parkMat = toonMat('#fff2d0', { emissive: '#8a7a40', emissiveIntensity: 0.3
 const reflMat = toonMat('#b02020');
 const badgeMat = toonMat('#c8342a');
 const seamMat = toonMat('#1d130c');
-const ruedaMat = toonMat('#ffffff', { vertexColors: true }); // la rueda entera: cada parte lleva su color en los vértices
+const ruedaMat = toonMat('#ffffff', { vertexColors: true, side: THREE.DoubleSide }); // la rueda entera: cada parte lleva su color en los vértices
 // Materiales de modulo: los comparten todos los autos y todas las carreras, no hay que liberarlos
 for (const m of [chromeMat, tireMat, hubMat, glassMat, darkMat, lightOn, lensMat, lightBroken, tailOff, tailOn, tailNight,
                  outline, woodMat, whitewallMat, blinkMat, parkMat, reflMat, badgeMat, seamMat, ruedaMat, ...suitcaseMats]) m.userData.compartido = true;
@@ -284,17 +285,32 @@ function pintar(g, hex) {
   g.setAttribute('color', new THREE.BufferAttribute(a, 3)); return g;
 }
 function geometriaRueda(lado, colorAuto, banda) {
-  const partes = [];
-  const goma = new THREE.CylinderGeometry(0.29, 0.29, 0.19, 16); goma.rotateZ(Math.PI / 2); partes.push(pintar(goma, '#2a2a2e'));
-  const llanta = new THREE.CylinderGeometry(0.19, 0.19, 0.03, 14); llanta.rotateZ(Math.PI / 2); llanta.translate(lado * 0.095, 0, 0); partes.push(pintar(llanta, colorAuto));
-  if (banda) { const b = new THREE.TorusGeometry(0.235, 0.028, 6, 18); b.rotateY(Math.PI / 2); b.translate(lado * 0.1, 0, 0); partes.push(pintar(b, '#f3eee2')); }
-  const taza = new THREE.SphereGeometry(0.12, 12, 10); taza.scale(0.35, 1, 1); taza.translate(lado * 0.11, 0, 0); partes.push(pintar(taza, '#e8eef2'));
+  // Todo torneado alrededor del eje y sin huecos entre partes. Antes la banda blanca era un aro suelto que
+  // sobresalía de la goma y dejaba un anillo oscuro contra la llanta: parecía que la goma estaba despegada.
+  const V = (r, y) => new THREE.Vector2(r, y), partes = [];
+  const alEje = (g) => { g.rotateZ(-lado * Math.PI / 2); return g; }; // lo torneado sale con el eje hacia arriba: se acuesta mirando para afuera
+  // goma: hombros redondeados y la cara de afuera apenas hundida hacia la llanta
+  partes.push(pintar(alEje(new THREE.LatheGeometry([V(0.2, -0.095), V(0.262, -0.095), V(0.283, -0.078), V(0.29, -0.045), V(0.29, 0.045), V(0.283, 0.078), V(0.262, 0.095), V(0.205, 0.092)], 20)), '#2a2a2e'));
+  // tapa de adentro (se ve por debajo del auto)
+  partes.push(pintar(alEje(new THREE.LatheGeometry([V(0.001, -0.09), V(0.2, -0.095)], 20)), '#1d1a1c'));
+  // banda blanca: un anillo plano pegado al costado de la goma, de la llanta hasta casi el hombro
+  if (banda) partes.push(pintar(alEje(new THREE.LatheGeometry([V(0.203, 0.094), V(0.252, 0.0975)], 20)), '#f3eee2'));
+  // llanta del color del auto: un plato hundido que llega justo hasta la banda
+  partes.push(pintar(alEje(new THREE.LatheGeometry([V(0.118, 0.07), V(0.175, 0.074), V(0.196, 0.084), V(0.205, 0.094)], 20)), colorAuto));
+  // taza cromada: un casquete en el centro
+  const taza = new THREE.SphereGeometry(0.125, 14, 6, 0, Math.PI * 2, 0, Math.PI / 2); taza.scale(1, 0.42, 1); taza.translate(0, 0.066, 0);
+  partes.push(pintar(alEje(taza), '#e8eef2'));
   const g = mergeGeometries(partes, false);
   for (const x of partes) x.dispose();
   return g;
 }
 
+// Materiales y ayudas que usa el casco con volumen (js/casco.js); se le pasan para no importarse mutuamente
+const taller = { toonMat, toonGradient, chromeMat, darkMat, lightOn, lensMat, tailOff, outline, blinkMat, parkMat, reflMat, badgeMat, woodMat, suitcaseMats, ruedaMat,
+  box, fusionarEn, SIN_PROTEGER, geometriaRueda, contactShadowMat, numberTexture, plateTexture };
+
 export function createCarVisual(spec) {
+  if (spec.casco && spec.casco !== 'viejo') return createCarVisualLoft(spec, taller);
   const rnd = mulberry32(spec.seed || 1);
   const root = new THREE.Group();
   const vis = new THREE.Group(); // subgrupo que inclinamos (suspensión)

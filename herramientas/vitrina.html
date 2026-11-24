@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Vitrina de carrocerías</title>
+<style>html,body{margin:0;height:100%;background:#cfe3ee;overflow:hidden;font:600 15px system-ui,sans-serif}canvas{display:block}#r{position:absolute;left:0;right:0;bottom:8px;display:flex;justify-content:space-around;color:#2b1d14;pointer-events:none}</style>
+<script type="importmap">
+{ "imports": { "three": "../lib/three/three.module.js", "three/addons/": "../lib/three/addons/" } }
+</script>
+</head>
+<body>
+<canvas id="gl"></canvas><div id="r"></div>
+<script type="module">
+// Vitrina para comparar carrocerías sin cargar el juego: los autos en fila, con la misma luz, desde la vista
+// que se pida.   vitrina.html?vista=34&autos=actual,fiel,caricatura&color=8fd3e8&techo=f2e6c9&accesorio=none
+// Vistas: 34 (tres cuartos de frente), 34a (tres cuartos de atrás), lado, frente, atras, arriba, juego (la de la cámara del juego)
+import * as THREE from 'three';
+import { createCarVisual, setHeadlights, setBrakeLights, setDirt, deformBody, detachParts } from '../js/car.js';
+const q = new URLSearchParams(location.search);
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gl'), antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.12;
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#cfe3ee');
+scene.add(new THREE.HemisphereLight('#bfe6f5', '#9a8a5c', 0.75));
+const sol = new THREE.DirectionalLight('#fff1cf', 1.9); sol.position.set(-6, 9, 7); sol.castShadow = true; sol.shadow.mapSize.set(2048, 2048);
+Object.assign(sol.shadow.camera, { left: -9, right: 9, top: 9, bottom: -9, near: 1, far: 40 }); sol.shadow.bias = -0.0008; sol.shadow.normalBias = 0.03; scene.add(sol);
+const piso = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshStandardMaterial({ color: '#b9a27a', roughness: 1 })); piso.rotation.x = -Math.PI / 2; piso.receiveShadow = true; scene.add(piso);
+const nombres = (q.get('autos') || 'actual,fiel,caricatura').split(',');
+const autos = nombres.map((n, i) => {
+  const cv = createCarVisual({ color: '#' + (q.get('color') || '8fd3e8'), roofColor: '#' + (q.get('techo') || 'f2e6c9'), number: 7, accessory: q.get('accesorio') || 'none', stripes: q.get('franjas') !== '0', helmetColor: '#e2a33b', seed: 3, casco: n === 'actual' ? null : n });
+  cv.root.position.x = (i - (nombres.length - 1) / 2) * 2.5;
+  scene.add(cv.root); return cv;
+});
+document.getElementById('r').innerHTML = nombres.map((n) => `<span>${n}</span>`).join('');
+const camara = new THREE.PerspectiveCamera(30, 1, 0.1, 200);
+const VISTAS = { 34: [7.5, 3.4, 9.5], '34a': [-7.5, 3.6, -9.5], lado: [16, 1.4, 0], frente: [0, 1.5, 16], atras: [0, 1.6, -16], arriba: [0, 18, 0.01], juego: [0, 4.6, -12.5] };
+window.ver = (vista = '34', acerca = 1) => {
+  const w = innerWidth, h = innerHeight; renderer.setSize(w, h); camara.aspect = w / h;
+  const p = VISTAS[vista] || VISTAS[34]; camara.position.set(p[0] * acerca, p[1] * (vista === 'arriba' ? acerca : 1), p[2] * acerca); camara.lookAt(0, 0.75, 0);
+  if (vista === 'lado') { autos.forEach((cv, i) => { cv.root.position.set(0, 0, ((autos.length - 1) / 2 - i) * 3.7); }); camara.position.set(13.5 * acerca, 1.25, 0); camara.fov = 30; }
+  // los carteles van en el orden en que se ven: desde atrás la fila queda al revés
+  document.getElementById('r').style.flexDirection = (camara.position.z < -0.1) ? 'row-reverse' : 'row';
+  camara.updateProjectionMatrix(); renderer.render(scene, camara);
+  return { vista, mallas: autos.map((cv) => { let n = 0; cv.root.traverse((o) => { if (o.isMesh) n++; }); return n; }), programas: renderer.info.programs.length };
+};
+window.autos = autos; window.noche = (si) => { for (const cv of autos) { setHeadlights(cv, si); setBrakeLights(cv, si); } sol.intensity = si ? 0.3 : 1.9; scene.background.set(si ? '#1a2038' : '#cfe3ee'); };
+// para probar que el casco aguanta lo que le hace el juego: barro y golpes
+window.barro = (v) => { for (const cv of autos) setDirt(cv, v); };
+window.golpes = () => { for (const cv of autos) { for (const [p, d] of [[[0.2, 0.75, 1.5], [0, 0, -1]], [[-0.3, 0.8, 1.45], [0, 0, -1]], [[0.72, 0.85, -0.3], [-1, 0, 0]], [[0.1, 0.8, -1.55], [0, 0, 1]]]) deformBody(cv, new THREE.Vector3(...p), new THREE.Vector3(...d), 0.22); for (const x of detachParts(cv, { front: 0.6, rear: 0.3, left: 0.4, right: 0 })) void x; } };
+// girar con el mouse: arrastrar da vueltas alrededor de los autos
+let giro = null, ang = 0.67, alt = 3.4, dist = 12.1;
+const orbitar = () => { camara.position.set(Math.sin(ang) * dist, alt, Math.cos(ang) * dist); camara.lookAt(0, 0.75, 0); document.getElementById('r').style.flexDirection = Math.cos(ang) < 0 ? 'row-reverse' : 'row'; renderer.render(scene, camara); };
+addEventListener('pointerdown', (e) => { giro = [e.clientX, e.clientY]; });
+addEventListener('pointerup', () => { giro = null; });
+addEventListener('pointermove', (e) => { if (!giro) return; ang -= (e.clientX - giro[0]) * 0.008; alt = Math.min(12, Math.max(0.6, alt + (e.clientY - giro[1]) * 0.03)); giro = [e.clientX, e.clientY]; orbitar(); });
+addEventListener('wheel', (e) => { dist = Math.min(30, Math.max(4, dist * (e.deltaY > 0 ? 1.1 : 0.9))); orbitar(); });
+window.addEventListener('resize', () => ver(q.get('vista') || '34'));
+ver(q.get('vista') || '34', parseFloat(q.get('acerca') || '1'));
+</script>
+</body>
+</html>

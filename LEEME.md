@@ -225,6 +225,34 @@ jugador (16, 12 y 24 %). En la carrera rápida acompañan las mejoras que tenga 
 taller completo, las últimas fechas se ganaban de punta a punta. En la última fecha, a nivel normal, la
 mejor vuelta de Polvaredas queda en 55,4 s.
 
+## La carrocería con volumen
+
+`js/casco.js` arma el Fitito por secciones. La carrocería anterior era el perfil lateral estirado a lo
+ancho: de costado estaba bien, pero de frente, de atrás y de arriba era una tabla con los cantos
+redondeados, con los vidrios y las costuras apoyados encima. Ahora:
+
+- **El casco** sale de `superficie()`: en cada punto del largo hay una sección cuyo alto viene del mismo
+  perfil lateral de siempre y cuyo ancho se cierra en la trompa y la cola. La chapa sube casi derecha hasta
+  la cintura, hace un hombro y sigue la cabina, apenas más angosta. Las medidas son las del 600 llevadas al
+  tamaño que ya tenía el auto en el juego (los choques están calculados para ese tamaño), con el zócalo a
+  21 cm del piso.
+- **Vidrios, marcos, costuras, rejilla del motor, tomas de aire, moldura y pasarruedas** no son piezas: se
+  dibujan sobre la chapa en el sombreador, a partir de la posición de fábrica de cada punto. No pueden
+  quedar flotando ni corridos, y siguen en su lugar cuando el auto se abolla. Los pasarruedas son huecos de
+  verdad. Adentro se ve el casco del piloto, del color de cada uno.
+- **Las piezas** (faros, paragolpes curvos, espejo, números, techo de otro color, franjas) se ubican
+  preguntándole a la superficie dónde está: `zFrente`, `zCola`, `xLado`, `yTecho`.
+- **Las ruedas** (`geometriaRueda` en `js/car.js`) son una sola pieza torneada: goma con hombros, banda
+  blanca al ras, llanta hundida y taza. Antes la banda era un aro suelto y parecía despegada.
+
+El auto queda en 31 a 34 mallas (el anterior, 39 a 42). La carrocería anterior sigue en `js/car.js` y se
+puede ver con `?casco=viejo` en la dirección.
+
+`herramientas/vitrina.html` muestra las carrocerías en fila con la misma luz, sin cargar el juego: se
+arrastra con el mouse para girar, y desde la consola `ver('lado')`, `ver('34a')`, `noche(true)`,
+`barro(0.7)` y `golpes()` prueban lo que el juego le hace al auto. Sirve para auditar cualquier cambio de
+diseño desde todos los ángulos antes de llevarlo al juego.
+
 ## El auto apoyado en el piso
 
 El auto se dibuja apoyado sobre sus ejes: se mide la altura del piso bajo el tren delantero, el trasero y a
@@ -310,7 +338,7 @@ Por eso valen las dos cosas: menos llamadas y menos píxeles.
 ## Pruebas
 
 ```bash
-npm test                       # todo: 158 comprobaciones, poco más de un minuto
+npm test                       # todo: 169 comprobaciones, un minuto
 node pruebas/todos.mjs rival   # sólo los grupos cuyo nombre contenga "rival"
 ```
 

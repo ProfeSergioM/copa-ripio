@@ -11,6 +11,8 @@ import { Replay, STRIDE } from './replay.js';
 
 // ?auto en la dirección: el auto del jugador maneja solo (para mirar y medir el juego sin tocar nada)
 const AUTO = typeof location !== 'undefined' && new URLSearchParams(location.search).has('auto');
+// La carrocería es la que tiene volumen (js/casco.js). Con ?casco=viejo en la dirección se vuelve a la anterior.
+const CASCO = (typeof location !== 'undefined' && new URLSearchParams(location.search).get('casco')) || 'fiel';
 
 const FIXED = 1 / 120;
 const _v = new THREE.Vector3();
@@ -59,7 +61,7 @@ export class Race {
       const slot = this.track.gridSlot(i);
       const state = createCar(i, slot.x, slot.z, slot.heading);
       state.y = this.track.heightAt(slot.x, slot.z); state.trackIdx = slot.idx;
-      const vis = createCarVisual({ color: r.color, roofColor: r.roofColor, number: r.number, accessory: r.accessory, stripes: r.stripes, helmetColor: r.helmetColor, seed: r.seed });
+      const vis = createCarVisual({ color: r.color, roofColor: r.roofColor, number: r.number, accessory: r.accessory, stripes: r.stripes, helmetColor: r.helmetColor, seed: r.seed, casco: CASCO });
       this.scene.add(vis.root);
       setHeadlights(vis, this.world.night || this.wet || this.world.foggy);
       const car = { state, vis, name: r.name, color: r.color, isPlayer: r.isPlayer, spec: r, ai: null, dustAcc: 0, smokeAcc: 0, position: i + 1, prevPosition: i + 1, honkT: 0, gridSlot: i, lastLapProgress: 0, markAcc: 0, isRival: r.name === this.rivalName };
